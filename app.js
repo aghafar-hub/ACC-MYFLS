@@ -369,7 +369,7 @@
     if (node.type === 'folder') {
       for (const child of node.children || []) indexPlainNode(data, child, key, key);
     } else {
-      data.plainFileIndex.push({ name: node.name, path: key, size: node.size || 0 });
+      data.plainFileIndex.push({ name: node.name, path: key, size: node.size || 0, driveUrl: node.driveUrl || null });
     }
     return key;
   }
@@ -600,6 +600,13 @@
   }
 
   function openRichDocument(sourceId, d) {
+    // Fast path: a direct Drive link baked in by scripts/merge-drive-links.js
+    // (no Apps Script round-trip, no Google interstitial). Falls back to the
+    // slower Apps Script lookup only for files not yet in that manifest.
+    if (d.driveUrl) {
+      window.open(d.driveUrl, '_blank', 'noopener');
+      return;
+    }
     const s = SOURCES.find((x) => x.id === sourceId);
     openViaAppsScript(`${s.driveFolderName}/documents/${d.fileName}`);
   }
@@ -675,6 +682,7 @@
       path: `${selectedFolderPath}/${c.name}`,
       size: c.type === 'file' ? c.size || 0 : null,
       isFolder: c.type === 'folder',
+      driveUrl: c.driveUrl || null,
     }));
   }
 
@@ -732,6 +740,10 @@
   }
 
   function openPlainFile(sourceId, f) {
+    if (f.driveUrl) {
+      window.open(f.driveUrl, '_blank', 'noopener');
+      return;
+    }
     const s = SOURCES.find((x) => x.id === sourceId);
     const prefix = s.driveFolderName ? s.driveFolderName + '/' : '';
     const withoutRoot = f.path.split('/').slice(1).join('/');

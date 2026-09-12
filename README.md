@@ -214,6 +214,46 @@ in this file.
 Both logos (`acc-logo.png`, `fls-logo.png`) are already in the repo,
 backgrounds already removed — nothing to do here.
 
+### 4. Make documents open instantly (direct Drive links)
+
+By default, opening a document round-trips through Apps Script — which
+works, but Google's own interstitial ("this app isn't verified") and
+per-request execution overhead make it feel slow and occasionally
+flaky. Once every source folder is fully uploaded to Drive, this
+one-time step makes documents open with a single, instant, direct
+link instead:
+
+1. **Share the Drive root folder** ([the one linked in step 1
+   above](https://drive.google.com/drive/folders/17OeueXcCpoAdjaZYP7xeDzIU99lejH0X))
+   as **"Anyone with the link" → Viewer**. This is the trade-off: the
+   app's login screen still gates who can browse the tree/search and
+   *see* a document's link at all, but a raw copied link, once handed
+   to someone outside the app, would work without signing in. Treat
+   links accordingly (don't paste them somewhere public).
+2. In the Apps Script editor, run **`exportDriveManifest`** once (from
+   the function dropdown, same as any other setup function). It walks
+   the whole Drive tree and writes one row per file — its path, Drive
+   file id, and view link — into a new **DriveManifest** tab in the
+   settings sheet. For tens of thousands of files this can take
+   several minutes; that's normal.
+3. Open that sheet, select the **DriveManifest** tab, **File →
+   Download → Comma Separated Values (.csv)**.
+4. Run the merge script against that CSV:
+   ```bash
+   node scripts/merge-drive-links.js "/path/to/DriveManifest.csv" ./data
+   ```
+   This bakes a `driveUrl` field directly into each document's entry in
+   `data/<source-id>/documents.json` (rich sources) or
+   `folderTree.json` (plain sources) wherever a match was found, and
+   prints a matched/missing count per source.
+5. Commit and push the updated `data/*.json` files.
+
+Documents with a `driveUrl` now open with a single direct link and no
+Apps Script involvement at all. Anything not yet uploaded (or uploaded
+after the last export) automatically falls back to the slower Apps
+Script path until you re-run steps 2–5 — nothing breaks in the
+meantime, it just isn't instant yet for those files.
+
 ## Publishing to GitHub Pages
 
 ```bash
@@ -231,7 +271,11 @@ a minute or two later.
 
 ## Regenerating the data
 
-Nothing under `data/` is hand-written.
+Nothing under `data/` is hand-written. Note that `extract.js` and
+`extract-plain.js` each rewrite their source's JSON file from scratch,
+which wipes any `driveUrl` fields baked in by `merge-drive-links.js` —
+re-run that merge afterward (step 4 above) to restore instant direct
+links.
 
 **Rich sources** (myFLS CD exports) — if FLSmidth/the plant issues an
 updated export for a plant, re-run:

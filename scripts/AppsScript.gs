@@ -115,6 +115,47 @@ function setTempPassword_(sheet, row, email) {
   Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this, then set a real password via the admin panel.');
 }
 
+// ---------------- Drive manifest export (for direct-link mode) ----------------
+// Run this ONCE, after every source folder has been fully uploaded to
+// Drive and the ROOT_FOLDER_ID folder has been shared "Anyone with the
+// link can view." It walks the whole Drive tree and writes one row per
+// file - its full path under the root, Drive file id, and view link -
+// into a "DriveManifest" tab in the settings sheet. Download that tab
+// as CSV (File > Download > Comma-separated values) and hand it to
+// whoever runs scripts/merge-drive-links.js, which bakes those links
+// directly into data/*.json so the app can open files with a plain
+// link and no Apps Script round-trip. Safe to re-run after uploading
+// more files later - it replaces the whole tab each time.
+function exportDriveManifest() {
+  const ss = SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+  const old = ss.getSheetByName('DriveManifest');
+  if (old) ss.deleteSheet(old);
+  const sheet = ss.insertSheet('DriveManifest');
+  sheet.appendRow(['Path', 'FileId', 'WebViewLink']);
+
+  const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  const rows = [];
+  walkDriveFolder_(root, '', rows);
+
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+  }
+  Logger.log('Exported ' + rows.length + ' files to the DriveManifest sheet tab.');
+}
+
+function walkDriveFolder_(folder, prefix, rows) {
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const f = files.next();
+    rows.push([prefix + f.getName(), f.getId(), f.getUrl()]);
+  }
+  const folders = folder.getFolders();
+  while (folders.hasNext()) {
+    const sub = folders.next();
+    walkDriveFolder_(sub, prefix + sub.getName() + '/', rows);
+  }
+}
+
 // ---------------- password hashing ----------------
 // Apps Script has no bcrypt/scrypt/Argon2 built in, so this stretches
 // SHA-256 many times as a reasonable best-effort substitute. Never store
