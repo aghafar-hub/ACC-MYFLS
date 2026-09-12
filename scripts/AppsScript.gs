@@ -69,11 +69,19 @@ function migrateToPasswordAuth() {
   }
   users.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt']]);
 
-  // give every existing row without a password a random temp one
+  // give every existing row without a password a random temp one. Check
+  // the Salt column (D), not PasswordHash (C) - the old 3-column schema
+  // (Email/Role/AddedAt) already had *something* sitting in column C
+  // (its AddedAt value), which would wrongly look like "already has a
+  // hash" if we checked that column instead.
   const data = users.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     const email = data[i][0];
-    if (!email || data[i][2]) continue; // skip blank rows and rows that already have a hash
+    if (!email || data[i][3]) continue; // blank row, or already migrated (has a salt)
+    const legacyAddedAt = data[i][2]; // old schema stored AddedAt here - preserve it
+    if (legacyAddedAt && !data[i][4]) {
+      users.getRange(i + 1, 5).setValue(legacyAddedAt);
+    }
     setTempPassword_(users, i + 1, email);
   }
 
