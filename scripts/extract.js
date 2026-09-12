@@ -13,45 +13,47 @@
  * are therefore namespaced per view: "<view>:<treeid>".
  *
  * Usage: node scripts/extract.js <path-to-myfls-export-root> [outputDir]
- *   e.g. node scripts/extract.js "../ACC line 1" ./data
+ *   e.g. node scripts/extract.js "../ACC line 1" ./public/data
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 const SRC = process.argv[2];
-const OUT = process.argv[3] || path.join(__dirname, '..', 'data');
+const OUT = process.argv[3] || path.join(__dirname, "..", "public", "data");
 
 if (!SRC) {
-  console.error('Usage: node extract.js <path-to-myfls-export-root> [outputDir]');
+  console.error("Usage: node extract.js <path-to-myfls-export-root> [outputDir]");
   process.exit(1);
 }
 
-const JS_DIR = path.join(SRC, 'js');
-const XML_DIR = path.join(SRC, 'xml');
-const DOCS_DIR = path.join(SRC, 'documents');
+const JS_DIR = path.join(SRC, "js");
+const XML_DIR = path.join(SRC, "xml");
+const DOCS_DIR = path.join(SRC, "documents");
 
 // ---------- helpers ----------
 
 function decodeEntities(s) {
   return s
     .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 }
 
 function stripHtml(s) {
-  return decodeEntities(s.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(s.replace(/<[^>]*>/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseQuery(qs) {
   const params = {};
-  qs.split('&').forEach((pair) => {
-    const [k, v] = pair.split('=');
-    if (k) params[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v) : '';
+  qs.split("&").forEach((pair) => {
+    const [k, v] = pair.split("=");
+    if (k) params[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v) : "";
   });
   return params;
 }
@@ -64,7 +66,7 @@ function vKey(view, treeid) {
 
 function parseTreeFile(file, viewNo, nodes) {
   if (!fs.existsSync(file)) return;
-  const src = fs.readFileSync(file, 'utf8');
+  const src = fs.readFileSync(file, "utf8");
 
   const fldRe = /gFld\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*'((?:[^'\\]|\\.)*)'\s*\)/g;
   const lnkRe = /gLnk\(\s*"[^"]*"\s*,\s*'((?:[^'\\]|\\.)*)'\s*,\s*'((?:[^'\\]|\\.)*)'\s*\)/g;
@@ -74,7 +76,7 @@ function parseTreeFile(file, viewNo, nodes) {
     while ((m = re.exec(src)) !== null) {
       const rawLabel = m[1];
       const url = m[2];
-      const qIdx = url.indexOf('?');
+      const qIdx = url.indexOf("?");
       if (qIdx === -1) continue;
       const q = parseQuery(url.slice(qIdx + 1));
       const level = q.level !== undefined ? parseInt(q.level, 10) : NaN;
@@ -116,21 +118,30 @@ function parseTreeFile(file, viewNo, nodes) {
 // ---------- 2. parse documents from xml/*.xml ----------
 
 const FIELD_TAGS = [
-  'document_no', 'document_file_name', 'language', 'docm_iso_code', 'eqpno',
-  'version_no', 'document_type', 'status_code', 'change_status',
-  'disp_date', 'publish_date', 'transmittal_no',
+  "document_no",
+  "document_file_name",
+  "language",
+  "docm_iso_code",
+  "eqpno",
+  "version_no",
+  "document_type",
+  "status_code",
+  "change_status",
+  "disp_date",
+  "publish_date",
+  "transmittal_no",
 ];
 
 function extractTag(block, tag) {
   const re = new RegExp(`<${tag}>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([^<]*))</${tag}>`);
   const m = re.exec(block);
-  if (!m) return '';
-  return decodeEntities((m[1] !== undefined ? m[1] : m[2] || '').trim());
+  if (!m) return "";
+  return decodeEntities((m[1] !== undefined ? m[1] : m[2] || "").trim());
 }
 
 // returns Map(fileName -> { fields, candidates: [{view, key}] })
 function parseXmlDocs() {
-  const files = fs.readdirSync(XML_DIR).filter((f) => f.endsWith('.xml'));
+  const files = fs.readdirSync(XML_DIR).filter((f) => f.endsWith(".xml"));
   console.log(`Scanning ${files.length} xml files...`);
   const trdetailRe = /<trdetail\s+([^>]*)>([\s\S]*?)<\/trdetail>/g;
   const attrRe = /(\w+)="([^"]*)"/g;
@@ -142,8 +153,8 @@ function parseXmlDocs() {
     const full = path.join(XML_DIR, f);
     let content;
     try {
-      content = fs.readFileSync(full, 'latin1');
-    } catch (e) {
+      content = fs.readFileSync(full, "latin1");
+    } catch {
       continue;
     }
 
@@ -157,14 +168,14 @@ function parseXmlDocs() {
       attrRe.lastIndex = 0;
       while ((am = attrRe.exec(attrsStr)) !== null) attrs[am[1]] = am[2];
 
-      const fileName = extractTag(block, 'document_file_name');
+      const fileName = extractTag(block, "document_file_name");
       if (!fileName || !attrs.treeid) continue;
 
       let entry = byFile.get(fileName);
       if (!entry) {
         const fields = {};
         for (const tag of FIELD_TAGS) fields[tag] = extractTag(block, tag);
-        fields.title = extractTag(block, 'title');
+        fields.title = extractTag(block, "title");
         entry = { fields, candidates: [] };
         byFile.set(fileName, entry);
       }
@@ -180,8 +191,8 @@ function parseXmlDocs() {
 // ---------- run ----------
 
 const nodes = new Map();
-parseTreeFile(path.join(JS_DIR, 'view_1.js'), '1', nodes);
-parseTreeFile(path.join(JS_DIR, 'view_2.js'), '2', nodes);
+parseTreeFile(path.join(JS_DIR, "view_1.js"), "1", nodes);
+parseTreeFile(path.join(JS_DIR, "view_2.js"), "2", nodes);
 console.log(`Parsed ${nodes.size} tree nodes.`);
 
 const byFile = parseXmlDocs();
@@ -256,8 +267,8 @@ console.log(`${withDocs}/${documents.length} documents placed in at least one tr
 const treeOut = { roots, nodes: Object.fromEntries(nodes) };
 
 fs.mkdirSync(OUT, { recursive: true });
-fs.writeFileSync(path.join(OUT, 'tree.json'), JSON.stringify(treeOut));
-fs.writeFileSync(path.join(OUT, 'documents.json'), JSON.stringify(documents));
+fs.writeFileSync(path.join(OUT, "tree.json"), JSON.stringify(treeOut));
+fs.writeFileSync(path.join(OUT, "documents.json"), JSON.stringify(documents));
 
-console.log(`Wrote ${path.join(OUT, 'tree.json')} and ${path.join(OUT, 'documents.json')}`);
+console.log(`Wrote ${path.join(OUT, "tree.json")} and ${path.join(OUT, "documents.json")}`);
 console.log(`Total documents: ${documents.length}`);

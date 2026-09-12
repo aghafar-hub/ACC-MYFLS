@@ -1,165 +1,38 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyFLS &mdash; Document Browser</title>
-  <link rel="stylesheet" href="style.css" />
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Browse and open ACC plant engineering documents from Google Drive." />
 
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#084a82" />
-  <link rel="icon" href="icon-192.png" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="MyFLS Docs" />
+    <link rel="manifest" href="%BASE_URL%manifest.json" />
+    <meta name="theme-color" content="#084a82" />
+    <link rel="icon" href="%BASE_URL%icon-192.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MyFLS Docs" />
 
-  <script>
-    // Applied before first paint to avoid a flash of the wrong theme.
-    (function () {
-      try {
-        var t = localStorage.getItem('myfls_theme');
-        if (t) document.documentElement.dataset.theme = t;
-      } catch (e) {}
-    })();
-  </script>
-</head>
-<body>
-  <div id="loginScreen" class="login-screen">
-    <div class="login-card">
-      <div class="login-logos">
-        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
-        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
-      </div>
-      <h1>MyFLS Document Browser</h1>
-      <p id="loginError" class="login-error" hidden></p>
-      <form id="loginForm" method="post">
-        <input type="hidden" name="action" value="login" />
-        <label>Email
-          <input type="email" name="email" required autocomplete="username" />
-        </label>
-        <label>Password
-          <input type="password" name="password" required autocomplete="current-password" />
-        </label>
-        <button type="submit" class="btn primary">Sign in</button>
-      </form>
-      <p class="login-hint">Ask your administrator if you don't have an account yet.</p>
-    </div>
-  </div>
+    <title>MyFLS &mdash; Document Browser</title>
 
-  <div id="changePasswordScreen" class="login-screen" hidden>
-    <div class="login-card">
-      <div class="login-logos">
-        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
-        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
-      </div>
-      <h1>Set a new password</h1>
-      <p class="login-hint" style="margin: 0 0 14px;">You're signed in with a temporary password. Choose a new one to continue.</p>
-      <p id="changePasswordError" class="login-error" hidden></p>
-      <form id="changePasswordForm" method="post">
-        <input type="hidden" name="action" value="change-password" />
-        <input type="hidden" name="token" />
-        <label>New password
-          <input type="password" name="newPassword" id="newPasswordInput" required minlength="6" autocomplete="new-password" />
-        </label>
-        <label>Confirm new password
-          <input type="password" id="confirmPasswordInput" required minlength="6" autocomplete="new-password" />
-        </label>
-        <button type="submit" class="btn primary">Set password</button>
-      </form>
-      <p class="login-hint"><a href="#" id="changePasswordSignOut">Sign out instead</a></p>
-    </div>
-  </div>
-
-  <div id="appRoot" hidden>
-    <header class="topbar">
-      <div class="brand">
-        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
-        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
-        <span class="brand-text">Document Browser</span>
-      </div>
-      <div class="search">
-        <input id="searchBox" type="search" placeholder="Search..." autocomplete="off" />
-      </div>
-      <div class="auth">
-        <span id="authStatus" class="auth-status"></span>
-        <span id="userEmail" class="user-email"></span>
-        <button id="settingsBtn" class="btn icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
-      </div>
-    </header>
-
-    <main class="layout">
-      <aside class="tree-panel">
-        <div class="panel-title">
-          <span id="treePanelTitle">Plants &amp; Projects</span>
-          <select id="viewSelect" class="view-select" hidden>
-            <option value="1">Process view</option>
-            <option value="2">Discipline view</option>
-          </select>
-        </div>
-        <ul id="tree" class="tree"></ul>
-      </aside>
-
-      <section class="doc-panel">
-        <div class="breadcrumb" id="breadcrumb"></div>
-
-        <div class="toolbar">
-          <label class="levels-toggle" id="showAllLevelsWrap">
-            <input type="checkbox" id="showAllLevels" checked />
-            Show all levels
-          </label>
-          <span id="docCount" class="doc-count"></span>
-          <div class="pager">
-            <button id="prevPage" class="btn small">&lsaquo;</button>
-            <span id="pageLabel"></span>
-            <button id="nextPage" class="btn small">&rsaquo;</button>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table id="docTable">
-            <thead id="docTableHead"></thead>
-            <tbody id="docTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div id="settingsPanel" class="settings-panel" hidden>
-    <div class="settings-backdrop"></div>
-    <div class="settings-card">
-      <div class="settings-header">
-        <h2>Settings</h2>
-        <button id="settingsClose" class="btn icon-btn" aria-label="Close">&times;</button>
-      </div>
-
-      <section class="settings-section">
-        <h3>Theme</h3>
-        <div id="themeGrid" class="theme-grid"></div>
-      </section>
-
-      <section class="settings-section" id="adminSection" hidden>
-        <h3>Admin</h3>
-        <p>Add, remove, or reset passwords for people who can use this app.</p>
-        <button id="openAdminBtn" class="btn">Manage users</button>
-      </section>
-
-      <section class="settings-section">
-        <button id="signOutBtn" class="btn secondary">Sign out</button>
-      </section>
-    </div>
-  </div>
-
-  <div id="toast" class="toast" hidden></div>
-
-  <script src="config.js"></script>
-  <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
-    }
-  </script>
-</body>
+    <script>
+      // Applied before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem("myfls_theme");
+          if (t) document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => navigator.serviceWorker.register("%BASE_URL%sw.js"));
+      }
+    </script>
+  </body>
 </html>
