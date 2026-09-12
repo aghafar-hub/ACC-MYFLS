@@ -1,6 +1,6 @@
 {
   "sources": [
-    { "id": "acc-line-1", "label": "ACC Line 1 (RAMLIYA CEMENT PLANT)", "kind": "rich", "driveFolderName": "ACC line 1" },
+    { "id": "acc-line-1", "label": "ACC Line 1", "kind": "rich", "driveFolderName": "ACC line 1" },
     { "id": "new-bucket-elevators-cd", "label": "New Bucket Elevators - L1 (CD)", "parentSourceId": "acc-line-1", "kind": "rich", "driveFolderName": "New Bucket Elevators - L1/CD" },
     { "id": "new-bucket-elevators-files", "label": "New Bucket Elevators - L1 (Files)", "parentSourceId": "acc-line-1", "kind": "plain", "driveFolderName": "New Bucket Elevators - L1" },
 
