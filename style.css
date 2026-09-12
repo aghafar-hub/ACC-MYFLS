@@ -318,7 +318,7 @@ tbody tr:hover { background: var(--row-hover); }
 
 /* ---------------- login screen ---------------- */
 
-.login-screen {
+.login-screen:not([hidden]) {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -384,7 +384,7 @@ tbody tr:hover { background: var(--row-hover); }
 
 /* ---------------- settings panel ---------------- */
 
-.settings-panel {
+.settings-panel:not([hidden]) {
   position: fixed;
   inset: 0;
   z-index: 60;
