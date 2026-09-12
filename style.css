@@ -40,13 +40,9 @@ body {
 }
 .brand-logo {
   display: block;
-  height: 28px;
+  height: 30px;
   width: auto;
-  background: #fff;
-  border-radius: 3px;
-  padding: 2px 6px;
 }
-.acc-logo { padding: 3px 5px; }
 .brand-text {
   font-weight: 400;
   font-size: 12px;

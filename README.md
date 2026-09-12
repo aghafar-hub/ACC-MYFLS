@@ -44,9 +44,9 @@ ones) are intentionally left out for now — see "Regenerating the data."
   `documents.json` for rich sources, `folderTree.json` for plain ones.
   All generated, not hand-written (see "Regenerating the data" below).
 - **`index.html` / `app.js` / `style.css`** — the browser app itself.
-- **`fls-logo.gif`** / **`acc-logo.png`** — the two logos shown in the
-  header (ACC on the left, FLSmidth on the right, matching the
-  original CD viewer's branding).
+- **`acc-logo.png`** / **`fls-logo.png`** — the two logos shown in the
+  header (ACC on the left, FLSmidth on the right, both with their white
+  background removed so they sit cleanly on the dark header).
 - Documents are opened, and access is controlled, through a small
   **Google Apps Script Web App** (free, no Google Cloud Console, no
   OAuth client, no billing account) — see below.
@@ -168,13 +168,8 @@ This URL isn't secret — it's the same link people click to open a
 document anyway. Real access control lives in the settings sheet, not
 in this file.
 
-### 4. Logos
-
-`fls-logo.gif` is already in the repo (pulled from the original CD
-export). `acc-logo.png` needs to be added — save the Arabian Cement Co.
-logo file at `drive-viewer/acc-logo.png` (same folder as `index.html`);
-the header is already wired to display it to the left of the FLSmidth
-logo once it's there.
+Both logos (`acc-logo.png`, `fls-logo.png`) are already in the repo,
+backgrounds already removed — nothing to do here.
 
 ## Publishing to GitHub Pages
 
