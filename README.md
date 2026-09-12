@@ -5,6 +5,15 @@ myFLS "CD viewer" (`ACC line 1/html/mfcdappstart.html`), extended to
 cover several plant/project folders under `Desktop/MyFLS`, and opening
 each document from Google Drive instead of a local disk folder.
 
+It's also a **PWA (Progressive Web App)**: once published, visitors can
+install it as an app — "Add to Home Screen" on a phone, or the install
+icon in Chrome/Edge's address bar on desktop — which gives it its own
+app icon, opens without browser chrome, and keeps the tree/search
+working offline for any source already opened at least once (opening a
+document still needs an internet connection, since that always goes
+through Drive). No app store, no separate codebase — same site, same
+deploy.
+
 ## What's in this app
 
 The left sidebar lists every source — plants and project folders — as a
@@ -47,6 +56,9 @@ ones) are intentionally left out for now — see "Regenerating the data."
 - **`acc-logo.png`** / **`fls-logo.png`** — the two logos shown in the
   header (ACC on the left, FLSmidth on the right, both with their white
   background removed so they sit cleanly on the dark header).
+- **`manifest.json`** / **`sw.js`** / **`icon-192.png`** / **`icon-512.png`**
+  / **`apple-touch-icon.png`** — the PWA install manifest, offline
+  service worker, and app icons (the ACC leaf mark on navy).
 - Documents are opened, and access is controlled, through a small
   **Google Apps Script Web App** (free, no Google Cloud Console, no
   OAuth client, no billing account) — see below.
