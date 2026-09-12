@@ -3,23 +3,13 @@
     { "id": "acc-line-1", "label": "ACC Line 1 (RAMLIYA CEMENT PLANT)", "kind": "rich", "driveFolderName": "ACC line 1" },
     { "id": "acc-line-2", "label": "ACC Line 2", "kind": "rich", "driveFolderName": "ACC line 2" },
     { "id": "myfls-cement-line-1", "label": "Myfls Cement Line 1", "kind": "rich", "driveFolderName": "Myfls Cement line 1" },
-    { "id": "af-systems", "label": "AF Systems", "kind": "plain", "driveFolderName": "AF Systems" },
-    { "id": "coal-systems", "label": "Coal Systems", "kind": "plain", "driveFolderName": "Coal systems" },
-    { "id": "new-bucket-elevators-l1", "label": "New Bucket Elevators - L1", "kind": "plain", "driveFolderName": "New Bucket Elevators - L1" },
-    { "id": "projects", "label": "Projects", "kind": "plain", "driveFolderName": "Projects" },
-    { "id": "palletizer", "label": "Palletizer", "kind": "plain", "driveFolderName": "Palletizer" },
-    { "id": "packing-beumer-disc-1", "label": "Packing Beumer Disc 1", "kind": "plain", "driveFolderName": "Packing Beumer Disc 1" },
-    { "id": "packing-beumer-disc-2", "label": "Packing Beumer Disc 2", "kind": "plain", "driveFolderName": "Packing Beumer Disc 2" },
-    { "id": "bypass-system-cm3-4", "label": "Bypass System (CM3,4)", "kind": "plain", "driveFolderName": "Bypass system (CM3,4)" },
-    { "id": "cm-3-and-cm-4-modification", "label": "CM 3 and CM 4 Modification", "kind": "plain", "driveFolderName": "CM 3 and CM 4 modification" },
-    { "id": "new-bag-filter-bf300", "label": "New Bag Filter BF300", "kind": "plain", "driveFolderName": "New Bag Filter BF300" },
-    { "id": "new-bag-filter", "label": "New Bag Filter", "kind": "plain", "driveFolderName": "new bag filter" },
-    { "id": "new-compressor", "label": "New Compressor", "kind": "plain", "driveFolderName": "new compressor" },
-    { "id": "packer-machines", "label": "Packer Machines", "kind": "plain", "driveFolderName": "packer machines" },
-    { "id": "cement-mill-drawing", "label": "Cement Mill Drawing", "kind": "plain", "driveFolderName": "cement mill drawing" },
-    { "id": "cooler-upgrade", "label": "Cooler Upgrade", "kind": "plain", "driveFolderName": "cooler upgrade" },
-    { "id": "material-standard", "label": "Material Standard", "kind": "plain", "driveFolderName": "Material Standard" },
-    { "id": "spechial-dwg", "label": "Special DWG", "kind": "plain", "driveFolderName": "Spechial DWG" },
-    { "id": "general-files", "label": "General Files", "kind": "plain", "driveFolderName": "" }
+
+    { "id": "af-hotdisc-updated", "label": "HOTDISC-Updated", "group": "AF Systems", "kind": "rich", "driveFolderName": "AF Systems/HOTDISC-Updated" },
+    { "id": "af-myfls-af-2015", "label": "MyFLS AF - Updated 8-12-2015", "group": "AF Systems", "kind": "rich", "driveFolderName": "AF Systems/MyFLS AF- Updated @ 8-12-2015" },
+    { "id": "af3-new-line", "label": "AF#3 New Line", "group": "AF Systems", "kind": "plain", "driveFolderName": "AF Systems/AF#3 New Line" },
+
+    { "id": "coal-acc-mill-extension", "label": "ACC Coal Mill-Extension", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/ACC Coal Mill-Extension" },
+    { "id": "coal-myfls-coal-1", "label": "Myfls Coal-1", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/Myfls Coal-1" },
+    { "id": "coal-myfls-coal-2", "label": "Myfls Coal-2", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/Myfls Coal-2" }
   ]
 }

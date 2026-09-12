@@ -37,11 +37,22 @@
 
     const select = el('sourceSelect');
     select.innerHTML = '';
+    const groups = new Map(); // group label -> <optgroup>
     for (const s of SOURCES) {
       const opt = document.createElement('option');
       opt.value = s.id;
       opt.textContent = s.label;
-      select.appendChild(opt);
+      if (s.group) {
+        if (!groups.has(s.group)) {
+          const og = document.createElement('optgroup');
+          og.label = s.group;
+          groups.set(s.group, og);
+          select.appendChild(og);
+        }
+        groups.get(s.group).appendChild(opt);
+      } else {
+        select.appendChild(opt);
+      }
     }
     select.addEventListener('change', () => selectSource(select.value));
 

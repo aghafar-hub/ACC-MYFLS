@@ -2,30 +2,37 @@
 
 A static web app that recreates the navigation tree and search from the
 old myFLS "CD viewer" (`ACC line 1/html/mfcdappstart.html`), extended to
-cover every plant/project folder under `Desktop/MyFLS`, and opening each
-document from Google Drive instead of a local disk folder.
+cover several plant/project folders under `Desktop/MyFLS`, and opening
+each document from Google Drive instead of a local disk folder.
+
+The remaining folders under `Desktop/MyFLS` (Palletizer, Projects, Coal
+systems' non-myFLS content, etc.) are intentionally left out of the app
+for now — easy to add later the same way, see "Regenerating the data".
 
 ## What's in this app
 
-A **source picker** at the top switches between 21 folders, in two kinds:
+A **source picker** at the top switches between 9 folders, in two kinds:
 
-- **Rich sources** (3) — real myFLS CD exports with a tree + document
-  database behind them: `ACC line 1` (RAMLIYA CEMENT PLANT, 6,998 docs),
-  `ACC line 2` (12,306 docs), `Myfls Cement line 1` (3,471 docs). These
-  get the full original experience: Process view / Discipline view
-  switcher, tree navigation, "show all levels," sortable/paginated table
-  with Document No./Version/Eqp. No./Title/Type/Status/Date, and search
-  across document numbers and titles.
-- **Plain sources** (18) — ordinary nested folders with no tree database
-  (`AF Systems`, `Coal systems`, `Palletizer`, `Projects`, etc., plus a
-  synthetic `General Files` source for the 5 loose files sitting directly
-  under `Desktop/MyFLS`). These get a simpler Explorer-style folder
+- **Rich sources** (8) — real myFLS CD exports with a tree + document
+  database behind them, each getting the full original experience
+  (Process view / Discipline view switcher, tree navigation, "show all
+  levels," sortable/paginated table, search across document numbers and
+  titles):
+  - `ACC Line 1` (RAMLIYA CEMENT PLANT) — 6,998 docs
+  - `ACC Line 2` — 12,306 docs
+  - `Myfls Cement Line 1` — 3,471 docs
+  - Under **AF Systems**: `HOTDISC-Updated` (858 docs) and
+    `MyFLS AF - Updated 8-12-2015` (392 docs)
+  - Under **Coal Systems**: `ACC Coal Mill-Extension` (286 docs),
+    `Myfls Coal-1` (2,370 docs), `Myfls Coal-2` (2,715 docs)
+- **Plain source** (1) — `AF#3 New Line` (the one AF Systems subfolder
+  that isn't a myFLS export) gets a simpler Explorer-style folder
   browser: tree of subfolders on the left, current folder's contents
-  (name/path/size) on the right, search by file name across the whole
-  source.
+  (name/path/size) on the right, search by file name.
 
-- **`data/sources.json`** — the manifest of all 21 sources (id, label,
-  kind, and the Drive folder name each maps to).
+- **`data/sources.json`** — the manifest of all sources (id, label,
+  kind, optional `group` for the picker's optgroups, and the Drive
+  folder name/path each maps to).
 - **`data/<source-id>/`** — one folder per source: `tree.json` +
   `documents.json` for rich sources, `folderTree.json` for plain ones.
   All generated, not hand-written (see "Regenerating the data" below).
@@ -41,11 +48,12 @@ A **source picker** at the top switches between 21 folders, in two kinds:
 You need to do three things before this works: mirror the folders to
 Drive, deploy the Apps Script, and fill in `config.js`.
 
-### 1. Mirror `Desktop/MyFLS` into one Google Drive folder
+### 1. Mirror the source folders into one Google Drive folder
 
 Create **one Drive folder** (call it whatever you like, e.g. "MyFLS") and
-upload every one of these folders into it, **preserving their exact
-names and internal structure**:
+upload these folders into it, **preserving their exact names and
+internal structure** (including the nesting under `AF Systems` and
+`Coal systems`):
 
 ```
 MyFLS/                                  <- this is your Drive root folder
@@ -55,27 +63,13 @@ MyFLS/                                  <- this is your Drive root folder
   ACC line 2/
   Myfls Cement line 1/
   AF Systems/
+    HOTDISC-Updated/
+    MyFLS AF- Updated @ 8-12-2015/
+    AF#3 New Line/
   Coal systems/
-  New Bucket Elevators - L1/
-  Projects/
-  Palletizer/
-  Packing Beumer Disc 1/
-  Packing Beumer Disc 2/
-  Bypass system (CM3,4)/
-  CM 3 and CM 4 modification/
-  New Bag Filter BF300/
-  new bag filter/
-  new compressor/
-  packer machines/
-  cement mill drawing/
-  cooler upgrade/
-  Material Standard/
-  Spechial DWG/
-  cooler upgrade.zip                    <- the 5 loose files go directly in
-  material code manual.PDF                 the Drive root, not in a subfolder
-  New FLENDER_DMG2 Gearbox_for (ACC) 46032567_EN.pdf
-  part list 40.pdf
-  Z-5435105 (002).pdf
+    ACC Coal Mill-Extension/
+    Myfls Coal-1/
+    Myfls Coal-2/
 ```
 
 The names must match exactly (spelling, capitalization, punctuation) —
@@ -170,6 +164,11 @@ updated export for a plant, re-run:
 node scripts/extract.js "/path/to/ACC line 1" ./data/acc-line-1
 node scripts/extract.js "/path/to/ACC line 2" ./data/acc-line-2
 node scripts/extract.js "/path/to/Myfls Cement line 1" ./data/myfls-cement-line-1
+node scripts/extract.js "/path/to/AF Systems/HOTDISC-Updated" ./data/af-hotdisc-updated
+node scripts/extract.js "/path/to/AF Systems/MyFLS AF- Updated @ 8-12-2015" ./data/af-myfls-af-2015
+node scripts/extract.js "/path/to/Coal systems/ACC Coal Mill-Extension" ./data/coal-acc-mill-extension
+node scripts/extract.js "/path/to/Coal systems/Myfls Coal-1" ./data/coal-myfls-coal-1
+node scripts/extract.js "/path/to/Coal systems/Myfls Coal-2" ./data/coal-myfls-coal-2
 ```
 
 This reads `js/view_1.js`, `js/view_2.js` and every file in `xml/` from
@@ -180,17 +179,23 @@ source's two JSON files.
 **Plain sources** — if a project folder's contents change, re-run:
 
 ```bash
-node scripts/extract-plain.js "/path/to/Coal systems" coal-systems ./data
+node scripts/extract-plain.js "/path/to/AF Systems/AF#3 New Line" af3-new-line ./data
 ```
 
 (source id must match the `id` used in `data/sources.json`).
 
-**Adding a brand-new source** (a new plant export or a new project
-folder): run the appropriate script above into a new `data/<id>/`
-folder, then add one entry to `data/sources.json` with that `id`, a
-`label`, `kind` ("rich" or "plain"), and `driveFolderName` (the exact
-name of the corresponding folder once mirrored into Drive — see step 1
-above). No other code changes are needed.
+**Adding a source that's currently left out** (Palletizer, Projects,
+Coal systems' plain content if any, or anything else under
+`Desktop/MyFLS` not listed above): first check whether it's a myFLS
+export (has `js/`, `xml/`, and `documents/` subfolders — use
+`extract.js`) or a plain folder (use `extract-plain.js`), run the
+appropriate script into a new `data/<id>/` folder, then add one entry to
+`data/sources.json` with that `id`, a `label`, `kind` ("rich" or
+"plain"), an optional `group` (to nest it under a picker optgroup like
+"AF Systems" or "Coal Systems"), and `driveFolderName` (the exact
+name/path of the corresponding folder once mirrored into Drive, e.g.
+`"Coal systems/Myfls Coal-1"` for something nested under `Coal systems`
+in step 1 above). No other code changes are needed.
 
 ## Known limitations
 
@@ -205,7 +210,10 @@ above). No other code changes are needed.
   original file from the preview page.
 - **Plain-source search** only matches file names, not folder names or
   file contents.
-- **Opening a deeply nested plain-source file** (e.g. six folders deep in
-  `Palletizer`) walks that many folders one at a time inside the Apps
-  Script, so it can take a second or two longer than a rich-source
-  document, which is a flat one-hop lookup.
+- **Opening a deeply nested plain-source file** walks that many folders
+  one at a time inside the Apps Script, so it can take a second or two
+  longer than a rich-source document, which is a flat one-hop lookup.
+- **Most of `Desktop/MyFLS` is intentionally not in the app yet** —
+  Palletizer, Projects, New Bucket Elevators - L1, Packing Beumer Disc
+  1/2, and several smaller project folders were left out for now. Adding
+  any of them back is the same two-step process described above.
