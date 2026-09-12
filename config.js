@@ -5,5 +5,5 @@
 // here.
 window.APP_CONFIG = {
   // The Web App URL from Apps Script's "Deploy" dialog, ending in /exec.
-  APPS_SCRIPT_URL: 'YOUR_APPS_SCRIPT_WEB_APP_URL',
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxRpb7N_57H9-XePkBCtEEeYVv33hkdEr0YgIb-TbPcImzgWb0wGNaNsfOt_c5mFMS6/exec',
 };
