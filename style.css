@@ -44,15 +44,6 @@ body {
   margin-left: 8px;
 }
 
-.source-picker { flex: 0 0 auto; }
-.source-picker select {
-  padding: 7px 10px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  font-size: 13px;
-  max-width: 220px;
-}
-
 .search { flex: 1 1 200px; min-width: 160px; }
 .search input {
   width: 100%;
@@ -173,6 +164,16 @@ body {
   flex: none;
 }
 .node-row.active .node-badge { background: rgba(255,255,255,0.25); color: #fff; }
+
+.node-row.group-row .node-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.node-row.source-row .node-label { font-weight: 600; }
+.node-row.source-row.active .node-label { color: #fff; }
 
 .doc-panel {
   flex: 1;

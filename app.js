@@ -5,26 +5,19 @@
   const PAGE_SIZE = 100;
 
   let SOURCES = [];
-  let currentSource = null; // { id, label, kind: 'rich'|'plain', driveFolderName }
+  let catalog = null; // { topSources: [...], groups: Map(label -> [sources]), nestedByParent: Map(parentId -> [sources]) }
+  let sourceCache = new Map(); // sourceId -> loaded data (rich or plain shape)
 
-  // ---- rich-source state (myFLS tree + xml export) ----
-  let TREE = null;
-  let DOCS = null;
-  let docsByNode = new Map();
-  let selectedNodeKey = null;
-  let currentView = '1';
-  let showAllLevels = true;
-
-  // ---- plain-source state (plain nested folders) ----
-  let PLAIN_ROOT = null;
-  let plainNodesByPath = new Map(); // path -> { node, parentPath }
-  let plainFileIndex = []; // [{ name, path, size }]
-  let selectedFolderPath = '';
+  let activeSourceId = null;
+  let selectedNodeKey = null; // rich only
+  let wholeSourceSelected = false; // rich only: true = show every document under this source
+  let selectedFolderPath = ''; // plain only
 
   let sortKey = 'docNo';
   let sortDir = 1;
   let page = 1;
   let searchTerm = '';
+  let searchDebounce;
 
   const el = (id) => document.getElementById(id);
 
@@ -34,51 +27,31 @@
     const res = await fetch('data/sources.json');
     const data = await res.json();
     SOURCES = data.sources;
-
-    const select = el('sourceSelect');
-    select.innerHTML = '';
-    const groups = new Map(); // group label -> <optgroup>
-    for (const s of SOURCES) {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.label;
-      if (s.group) {
-        if (!groups.has(s.group)) {
-          const og = document.createElement('optgroup');
-          og.label = s.group;
-          groups.set(s.group, og);
-          select.appendChild(og);
-        }
-        groups.get(s.group).appendChild(opt);
-      } else {
-        select.appendChild(opt);
-      }
-    }
-    select.addEventListener('change', () => selectSource(select.value));
-
+    buildCatalog();
+    buildSidebar();
     wireControls();
     initAuth();
-    await selectSource(SOURCES[0].id);
+    el('breadcrumb').textContent = 'Select a plant or project from the left to begin.';
   }
 
-  async function selectSource(id) {
-    currentSource = SOURCES.find((s) => s.id === id);
-    el('sourceSelect').value = id;
-    searchTerm = '';
-    el('searchBox').value = '';
-    page = 1;
-
-    const isRich = currentSource.kind === 'rich';
-    el('viewSelect').hidden = !isRich;
-    el('showAllLevelsWrap').hidden = !isRich;
-
-    if (isRich) {
-      await loadRichSource(currentSource.id);
-      buildRichTree();
-    } else {
-      await loadPlainSource(currentSource.id);
-      buildPlainTree();
+  function buildCatalog() {
+    const groups = new Map();
+    const nestedByParent = new Map();
+    const topSources = [];
+    for (const s of SOURCES) {
+      if (s.parentSourceId) {
+        if (!nestedByParent.has(s.parentSourceId)) nestedByParent.set(s.parentSourceId, []);
+        nestedByParent.get(s.parentSourceId).push(s);
+        continue;
+      }
+      if (s.group) {
+        if (!groups.has(s.group)) groups.set(s.group, []);
+        groups.get(s.group).push(s);
+      } else {
+        topSources.push(s);
+      }
     }
+    catalog = { topSources, groups, nestedByParent };
   }
 
   function nodeLabel(node) {
@@ -91,51 +64,244 @@
     return (iconMap[node.nodeType] || '📁') + ' ' + node.label;
   }
 
-  // ================= RICH SOURCE (myFLS tree/xml) =================
+  // ================= sidebar: catalog (sources + groups) =================
 
-  async function loadRichSource(id) {
-    const [tree, docs] = await Promise.all([
-      fetch(`data/${id}/tree.json`).then((r) => r.json()),
-      fetch(`data/${id}/documents.json`).then((r) => r.json()),
-    ]);
-    TREE = tree;
-    DOCS = docs;
-    currentView = '1';
-    el('viewSelect').value = '1';
-    rebuildDocsByNode();
+  function buildSidebar() {
+    const rootUl = el('tree');
+    rootUl.innerHTML = '';
+    for (const s of catalog.topSources) rootUl.appendChild(renderSourceLi(s));
+    for (const [label, srcs] of catalog.groups) rootUl.appendChild(renderGroupLi(label, srcs));
   }
 
-  function rebuildDocsByNode() {
-    docsByNode = new Map();
-    for (const d of DOCS) {
-      const keys = d.nodeKeys[currentView];
-      if (!keys) continue;
-      for (const nk of keys) {
-        if (!docsByNode.has(nk)) docsByNode.set(nk, []);
-        docsByNode.get(nk).push(d);
+  function renderGroupLi(label, srcs) {
+    const li = document.createElement('li');
+    const row = document.createElement('div');
+    row.className = 'node-row group-row';
+
+    const twisty = document.createElement('span');
+    twisty.className = 'twisty';
+    twisty.textContent = '▸';
+    row.appendChild(twisty);
+
+    const lbl = document.createElement('span');
+    lbl.className = 'node-label';
+    lbl.textContent = '🗃 ' + label;
+    row.appendChild(lbl);
+
+    li.appendChild(row);
+
+    let childUl = null;
+    let expanded = false;
+
+    function toggle(force) {
+      expanded = force !== undefined ? force : !expanded;
+      twisty.textContent = expanded ? '▾' : '▸';
+      if (expanded && !childUl) {
+        childUl = document.createElement('ul');
+        for (const s of srcs) childUl.appendChild(renderSourceLi(s));
+        li.appendChild(childUl);
       }
+      if (childUl) childUl.style.display = expanded ? '' : 'none';
+    }
+
+    row.addEventListener('click', () => toggle());
+    return li;
+  }
+
+  function renderSourceLi(s) {
+    const li = document.createElement('li');
+    const row = document.createElement('div');
+    row.className = 'node-row source-row';
+    row.dataset.rowKey = s.id;
+
+    const twisty = document.createElement('span');
+    twisty.className = 'twisty';
+    twisty.textContent = '▸';
+    row.appendChild(twisty);
+
+    const label = document.createElement('span');
+    label.className = 'node-label';
+    label.textContent = (s.kind === 'rich' ? '🏭 ' : '📁 ') + s.label;
+    row.appendChild(label);
+
+    li.appendChild(row);
+
+    let childUl = null;
+    let expanded = false;
+    let internalLoaded = false;
+
+    async function ensureInternal() {
+      if (internalLoaded) return;
+      internalLoaded = true;
+      childUl = document.createElement('ul');
+      li.appendChild(childUl);
+      await loadSourceData(s.id);
+      sourceCache.get(s.id).branchUl = childUl;
+      renderSourceBranch(s.id);
+    }
+
+    function toggle(force) {
+      expanded = force !== undefined ? force : !expanded;
+      twisty.textContent = expanded ? '▾' : '▸';
+      if (expanded) ensureInternal();
+      if (childUl) childUl.style.display = expanded ? '' : 'none';
+    }
+
+    twisty.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    row.addEventListener('click', async () => {
+      await activateSource(s.id);
+      if (!expanded) toggle(true);
+    });
+
+    return li;
+  }
+
+  // rebuilds a source's own rendered branch (its internal tree + any
+  // nested sources) in place - used on first expand and whenever the
+  // active source's Process/Discipline view changes.
+  function renderSourceBranch(sourceId) {
+    const data = sourceCache.get(sourceId);
+    if (!data || !data.branchUl) return;
+    data.branchUl.innerHTML = '';
+    if (data.kind === 'rich') {
+      const roots = data.TREE.roots.filter((k) => data.TREE.nodes[k].view === data.currentView);
+      for (const key of roots) data.branchUl.appendChild(renderRichNode(sourceId, key));
+    } else {
+      const subfolders = (data.PLAIN_ROOT.children || []).filter((c) => c.type === 'folder');
+      for (const sub of subfolders) {
+        data.branchUl.appendChild(renderPlainNode(sourceId, `${data.PLAIN_ROOT.name}/${sub.name}`, sub));
+      }
+    }
+    for (const nested of catalog.nestedByParent.get(sourceId) || []) {
+      data.branchUl.appendChild(renderSourceLi(nested));
     }
   }
 
-  function buildRichTree() {
-    const rootUl = el('tree');
-    rootUl.innerHTML = '';
-    el('treePanelTitle').textContent = 'Complete project';
-    const roots = TREE.roots.filter((k) => TREE.nodes[k].view === currentView);
-    for (const key of roots) rootUl.appendChild(renderRichNode(key));
-    selectedNodeKey = null;
-    el('breadcrumb').textContent = '';
+  function markActiveRow(rowKey) {
+    document.querySelectorAll('.node-row.active').forEach((r) => r.classList.remove('active'));
+    const row = document.querySelector(`.node-row[data-row-key="${CSS.escape(rowKey)}"]`);
+    if (row) row.classList.add('active');
+  }
+
+  // ================= loading source data =================
+
+  async function loadSourceData(id) {
+    if (sourceCache.has(id)) return sourceCache.get(id);
+    const s = SOURCES.find((x) => x.id === id);
+    let data;
+    if (s.kind === 'rich') {
+      const [tree, docs] = await Promise.all([
+        fetch(`data/${id}/tree.json`).then((r) => r.json()),
+        fetch(`data/${id}/documents.json`).then((r) => r.json()),
+      ]);
+      data = { kind: 'rich', source: s, TREE: tree, DOCS: docs, currentView: '1', docsByNode: null, branchUl: null };
+      data.docsByNode = buildDocsByNode(data);
+    } else {
+      const folder = await fetch(`data/${id}/folderTree.json`).then((r) => r.json());
+      data = { kind: 'plain', source: s, PLAIN_ROOT: folder.root, plainNodesByPath: new Map(), plainFileIndex: [], branchUl: null };
+      indexPlainNode(data, data.PLAIN_ROOT, '', null);
+    }
+    sourceCache.set(id, data);
+    return data;
+  }
+
+  function buildDocsByNode(data) {
+    const map = new Map();
+    for (const d of data.DOCS) {
+      const keys = d.nodeKeys[data.currentView];
+      if (!keys) continue;
+      for (const nk of keys) {
+        if (!map.has(nk)) map.set(nk, []);
+        map.get(nk).push(d);
+      }
+    }
+    return map;
+  }
+
+  function indexPlainNode(data, node, parentPath, parentKey) {
+    const key = parentPath ? `${parentPath}/${node.name}` : node.name;
+    data.plainNodesByPath.set(key, { node, parentPath: parentKey });
+    if (node.type === 'folder') {
+      for (const child of node.children || []) indexPlainNode(data, child, key, key);
+    } else {
+      data.plainFileIndex.push({ name: node.name, path: key, size: node.size || 0 });
+    }
+    return key;
+  }
+
+  // ================= activating / selecting =================
+
+  async function activateSource(id) {
+    await loadSourceData(id);
+    activeSourceId = id;
+    const data = sourceCache.get(id);
+    searchTerm = '';
+    el('searchBox').value = '';
+    page = 1;
+
+    if (data.kind === 'rich') {
+      selectedNodeKey = null;
+      wholeSourceSelected = true;
+      el('viewSelect').hidden = false;
+      el('viewSelect').value = data.currentView;
+      el('showAllLevelsWrap').hidden = false;
+    } else {
+      selectedFolderPath = data.PLAIN_ROOT.name;
+      el('viewSelect').hidden = true;
+      el('showAllLevelsWrap').hidden = true;
+    }
+
+    markActiveRow(id);
     renderDocTableHead();
+    refreshBreadcrumb();
     renderDocs();
   }
 
-  function renderRichNode(key) {
-    const node = TREE.nodes[key];
+  function selectRichNode(sourceId, key) {
+    activeSourceId = sourceId;
+    selectedNodeKey = key;
+    wholeSourceSelected = false;
+    page = 1;
+    searchTerm = '';
+    el('searchBox').value = '';
+    const data = sourceCache.get(sourceId);
+    el('viewSelect').hidden = false;
+    el('viewSelect').value = data.currentView;
+    el('showAllLevelsWrap').hidden = false;
+    markActiveRow(`${sourceId}::${key}`);
+    renderDocTableHead();
+    refreshBreadcrumb();
+    renderDocs();
+  }
+
+  function selectFolder(sourceId, path) {
+    activeSourceId = sourceId;
+    selectedFolderPath = path;
+    page = 1;
+    searchTerm = '';
+    el('searchBox').value = '';
+    el('viewSelect').hidden = true;
+    el('showAllLevelsWrap').hidden = true;
+    markActiveRow(`${sourceId}::${path}`);
+    renderDocTableHead();
+    refreshBreadcrumb();
+    renderDocs();
+  }
+
+  // ================= RICH tree nodes (sidebar) =================
+
+  function renderRichNode(sourceId, key) {
+    const data = sourceCache.get(sourceId);
+    const node = data.TREE.nodes[key];
     const li = document.createElement('li');
 
     const row = document.createElement('div');
     row.className = 'node-row';
-    row.dataset.key = key;
+    row.dataset.rowKey = `${sourceId}::${key}`;
 
     const twisty = document.createElement('span');
     twisty.className = 'twisty';
@@ -147,7 +313,7 @@
     label.textContent = nodeLabel(node);
     row.appendChild(label);
 
-    const directCount = (docsByNode.get(key) || []).length;
+    const directCount = (data.docsByNode.get(key) || []).length;
     if (directCount) {
       const badge = document.createElement('span');
       badge.className = 'node-badge';
@@ -160,13 +326,13 @@
     let childUl = null;
     let expanded = false;
 
-    function toggle(forceExpand) {
+    function toggle(force) {
       if (!node.children.length) return;
-      expanded = forceExpand !== undefined ? forceExpand : !expanded;
+      expanded = force !== undefined ? force : !expanded;
       twisty.textContent = expanded ? '▾' : '▸';
       if (expanded && !childUl) {
         childUl = document.createElement('ul');
-        for (const ck of node.children) childUl.appendChild(renderRichNode(ck));
+        for (const ck of node.children) childUl.appendChild(renderRichNode(sourceId, ck));
         li.appendChild(childUl);
       }
       if (childUl) childUl.style.display = expanded ? '' : 'none';
@@ -178,53 +344,45 @@
     });
 
     row.addEventListener('click', () => {
-      selectRichNode(key);
+      selectRichNode(sourceId, key);
       if (!expanded) toggle(true);
     });
 
     return li;
   }
 
-  function selectRichNode(key) {
-    selectedNodeKey = key;
-    page = 1;
-    document.querySelectorAll('.node-row.active').forEach((r) => r.classList.remove('active'));
-    const row = document.querySelector(`.node-row[data-key="${CSS.escape(key)}"]`);
-    if (row) row.classList.add('active');
-    searchTerm = '';
-    el('searchBox').value = '';
-    renderRichBreadcrumb(key);
-    renderDocs();
-  }
-
-  function ancestorChain(key) {
+  function ancestorChain(data, key) {
     const chain = [];
     let cur = key;
     while (cur) {
       chain.unshift(cur);
-      cur = TREE.nodes[cur].parentKey;
+      cur = data.TREE.nodes[cur].parentKey;
     }
     return chain;
   }
 
-  function renderRichBreadcrumb(key) {
-    const bc = el('breadcrumb');
-    if (!key) { bc.textContent = ''; return; }
-    const chain = ancestorChain(key);
-    bc.innerHTML =
-      escapeHtml(currentSource.label) + ' &raquo; ' +
-      chain.map((k, i) => (i === chain.length - 1 ? `<b>${escapeHtml(TREE.nodes[k].label)}</b>` : escapeHtml(TREE.nodes[k].label))).join(' &raquo; ');
+  function renderRichBreadcrumb(sourceId, key) {
+    const data = sourceCache.get(sourceId);
+    const chain = ancestorChain(data, key);
+    el('breadcrumb').innerHTML =
+      escapeHtml(data.source.label) + ' &raquo; ' +
+      chain.map((k, i) => (i === chain.length - 1 ? `<b>${escapeHtml(data.TREE.nodes[k].label)}</b>` : escapeHtml(data.TREE.nodes[k].label))).join(' &raquo; ');
   }
 
-  function collectDescendantDocs(key) {
+  function renderWholeSourceBreadcrumb(sourceId) {
+    const data = sourceCache.get(sourceId);
+    el('breadcrumb').innerHTML = `<b>${escapeHtml(data.source.label)}</b> &raquo; All documents`;
+  }
+
+  function collectDescendantDocs(data, key) {
     const seen = new Set();
     const out = [];
     const stack = [key];
     while (stack.length) {
       const k = stack.pop();
-      const node = TREE.nodes[k];
-      if (docsByNode.has(k)) {
-        for (const d of docsByNode.get(k)) {
+      const node = data.TREE.nodes[k];
+      if (data.docsByNode.has(k)) {
+        for (const d of data.docsByNode.get(k)) {
           if (seen.has(d.fileName)) continue;
           seen.add(d.fileName);
           out.push(d);
@@ -235,18 +393,36 @@
     return out;
   }
 
+  function collectDescendantDocsMulti(data, keys) {
+    const seen = new Set();
+    const out = [];
+    for (const k of keys) {
+      for (const d of collectDescendantDocs(data, k)) {
+        if (seen.has(d.fileName)) continue;
+        seen.add(d.fileName);
+        out.push(d);
+      }
+    }
+    return out;
+  }
+
   function currentRichDocSet() {
+    const data = sourceCache.get(activeSourceId);
     if (searchTerm) {
       const t = searchTerm.toLowerCase();
-      return DOCS.filter(
+      return data.DOCS.filter(
         (d) =>
           (d.docNo && d.docNo.toLowerCase().includes(t)) ||
           (d.title && d.title.toLowerCase().includes(t)) ||
           (d.eqpNo && d.eqpNo.toLowerCase().includes(t))
       );
     }
+    if (wholeSourceSelected) {
+      const roots = data.TREE.roots.filter((k) => data.TREE.nodes[k].view === data.currentView);
+      return collectDescendantDocsMulti(data, roots);
+    }
     if (!selectedNodeKey) return [];
-    return showAllLevels ? collectDescendantDocs(selectedNodeKey) : docsByNode.get(selectedNodeKey) || [];
+    return el('showAllLevels').checked ? collectDescendantDocs(data, selectedNodeKey) : data.docsByNode.get(selectedNodeKey) || [];
   }
 
   function statusClass(status) {
@@ -257,7 +433,7 @@
     return '';
   }
 
-  function renderRichRow(d) {
+  function renderRichRow(sourceId, d) {
     const tr = document.createElement('tr');
 
     const tdNo = document.createElement('td');
@@ -265,7 +441,7 @@
     a.className = 'doc-link';
     a.textContent = d.docNo || d.fileName;
     a.title = d.fileName;
-    a.addEventListener('click', () => openRichDocument(d));
+    a.addEventListener('click', () => openRichDocument(sourceId, d));
     tdNo.appendChild(a);
     tr.appendChild(tdNo);
 
@@ -282,47 +458,18 @@
     return tr;
   }
 
-  function openRichDocument(d) {
-    const drivePath = `${currentSource.driveFolderName}/documents/${d.fileName}`;
-    openViaAppsScript(drivePath);
+  function openRichDocument(sourceId, d) {
+    const s = SOURCES.find((x) => x.id === sourceId);
+    openViaAppsScript(`${s.driveFolderName}/documents/${d.fileName}`);
   }
 
-  // ================= PLAIN SOURCE (nested folders, no metadata) =================
+  // ================= PLAIN folder nodes (sidebar) =================
 
-  async function loadPlainSource(id) {
-    const data = await fetch(`data/${id}/folderTree.json`).then((r) => r.json());
-    PLAIN_ROOT = data.root;
-    plainNodesByPath = new Map();
-    plainFileIndex = [];
-    indexPlainNode(PLAIN_ROOT, '', null);
-    selectedFolderPath = '';
-  }
-
-  function indexPlainNode(node, parentPath, parentKey) {
-    const key = parentPath ? `${parentPath}/${node.name}` : node.name;
-    plainNodesByPath.set(key, { node, parentPath: parentKey });
-    if (node.type === 'folder') {
-      for (const child of node.children || []) indexPlainNode(child, key, key);
-    } else {
-      plainFileIndex.push({ name: node.name, path: key, size: node.size || 0 });
-    }
-    return key;
-  }
-
-  function buildPlainTree() {
-    const rootUl = el('tree');
-    rootUl.innerHTML = '';
-    el('treePanelTitle').textContent = currentSource.label;
-    rootUl.appendChild(renderPlainNode(PLAIN_ROOT.name, PLAIN_ROOT));
-    renderDocTableHead();
-    selectFolder(PLAIN_ROOT.name);
-  }
-
-  function renderPlainNode(key, node) {
+  function renderPlainNode(sourceId, key, node) {
     const li = document.createElement('li');
     const row = document.createElement('div');
     row.className = 'node-row';
-    row.dataset.key = key;
+    row.dataset.rowKey = `${sourceId}::${key}`;
 
     const subfolders = (node.children || []).filter((c) => c.type === 'folder');
 
@@ -341,13 +488,13 @@
     let childUl = null;
     let expanded = false;
 
-    function toggle(forceExpand) {
+    function toggle(force) {
       if (!subfolders.length) return;
-      expanded = forceExpand !== undefined ? forceExpand : !expanded;
+      expanded = force !== undefined ? force : !expanded;
       twisty.textContent = expanded ? '▾' : '▸';
       if (expanded && !childUl) {
         childUl = document.createElement('ul');
-        for (const sub of subfolders) childUl.appendChild(renderPlainNode(`${key}/${sub.name}`, sub));
+        for (const sub of subfolders) childUl.appendChild(renderPlainNode(sourceId, `${key}/${sub.name}`, sub));
         li.appendChild(childUl);
       }
       if (childUl) childUl.style.display = expanded ? '' : 'none';
@@ -359,26 +506,14 @@
     });
 
     row.addEventListener('click', () => {
-      selectFolder(key);
+      selectFolder(sourceId, key);
       if (!expanded) toggle(true);
     });
 
     return li;
   }
 
-  function selectFolder(key) {
-    selectedFolderPath = key;
-    page = 1;
-    document.querySelectorAll('.node-row.active').forEach((r) => r.classList.remove('active'));
-    const row = document.querySelector(`.node-row[data-key="${CSS.escape(key)}"]`);
-    if (row) row.classList.add('active');
-    searchTerm = '';
-    el('searchBox').value = '';
-    renderPlainBreadcrumb(key);
-    renderDocs();
-  }
-
-  function renderPlainBreadcrumb(key) {
+  function renderPlainBreadcrumb(sourceId, key) {
     const parts = key.split('/');
     el('breadcrumb').innerHTML = parts
       .map((p, i) => (i === parts.length - 1 ? `<b>${escapeHtml(p)}</b>` : escapeHtml(p)))
@@ -386,11 +521,12 @@
   }
 
   function currentPlainRowSet() {
+    const data = sourceCache.get(activeSourceId);
     if (searchTerm) {
       const t = searchTerm.toLowerCase();
-      return plainFileIndex.filter((f) => f.name.toLowerCase().includes(t));
+      return data.plainFileIndex.filter((f) => f.name.toLowerCase().includes(t));
     }
-    const entry = plainNodesByPath.get(selectedFolderPath);
+    const entry = data.plainNodesByPath.get(selectedFolderPath);
     if (!entry) return [];
     const children = entry.node.children || [];
     return children.map((c) => ({
@@ -413,7 +549,7 @@
     return v.toFixed(1) + ' TB';
   }
 
-  function renderPlainRow(f) {
+  function renderPlainRow(sourceId, f) {
     const tr = document.createElement('tr');
     const tdName = document.createElement('td');
 
@@ -422,8 +558,8 @@
       link.className = 'doc-link';
       link.textContent = '📁 ' + f.name;
       link.addEventListener('click', () => {
-        expandAncestors(f.path);
-        selectFolder(f.path);
+        expandAncestors(sourceId, f.path);
+        selectFolder(sourceId, f.path);
       });
       tdName.appendChild(link);
     } else {
@@ -431,7 +567,7 @@
       link.className = 'doc-link';
       link.textContent = '📄 ' + f.name;
       link.title = f.path;
-      link.addEventListener('click', () => openPlainFile(f));
+      link.addEventListener('click', () => openPlainFile(sourceId, f));
       tdName.appendChild(link);
     }
     tr.appendChild(tdName);
@@ -440,13 +576,13 @@
     return tr;
   }
 
-  function expandAncestors(path) {
-    const row = document.querySelector(`.node-row[data-key="${CSS.escape(path)}"]`);
-    if (row) return; // already rendered/expanded
+  function expandAncestors(sourceId, path) {
+    const row = document.querySelector(`.node-row[data-row-key="${CSS.escape(`${sourceId}::${path}`)}"]`);
+    if (row) return;
     const parts = path.split('/');
     for (let i = 1; i < parts.length; i++) {
       const ancestorKey = parts.slice(0, i).join('/');
-      const ancestorRow = document.querySelector(`.node-row[data-key="${CSS.escape(ancestorKey)}"]`);
+      const ancestorRow = document.querySelector(`.node-row[data-row-key="${CSS.escape(`${sourceId}::${ancestorKey}`)}"]`);
       if (ancestorRow) {
         const twisty = ancestorRow.querySelector('.twisty');
         if (twisty && twisty.textContent === '▸') twisty.click();
@@ -454,21 +590,40 @@
     }
   }
 
-  function openPlainFile(f) {
-    const prefix = currentSource.driveFolderName ? currentSource.driveFolderName + '/' : '';
-    // f.path's first segment is the source root's own display name - drop it,
-    // the Drive folder already represents that root.
+  function openPlainFile(sourceId, f) {
+    const s = SOURCES.find((x) => x.id === sourceId);
+    const prefix = s.driveFolderName ? s.driveFolderName + '/' : '';
     const withoutRoot = f.path.split('/').slice(1).join('/');
     openViaAppsScript(prefix + withoutRoot);
   }
 
-  // ================= shared: table head/body, paging, sorting =================
+  // ================= shared: breadcrumb, table head/body, paging, sorting =================
+
+  function refreshBreadcrumb() {
+    if (!activeSourceId) {
+      el('breadcrumb').textContent = 'Select a plant or project from the left to begin.';
+      return;
+    }
+    const data = sourceCache.get(activeSourceId);
+    if (searchTerm) {
+      el('breadcrumb').innerHTML = `Search results for &ldquo;${escapeHtml(searchTerm)}&rdquo; in <b>${escapeHtml(data.source.label)}</b>`;
+      return;
+    }
+    if (data.kind === 'rich') {
+      if (wholeSourceSelected || !selectedNodeKey) renderWholeSourceBreadcrumb(activeSourceId);
+      else renderRichBreadcrumb(activeSourceId, selectedNodeKey);
+    } else {
+      renderPlainBreadcrumb(activeSourceId, selectedFolderPath);
+    }
+  }
 
   function renderDocTableHead() {
     const thead = el('docTableHead');
     thead.innerHTML = '';
+    if (!activeSourceId) return;
+    const isRich = sourceCache.get(activeSourceId).kind === 'rich';
     const tr = document.createElement('tr');
-    const columns = currentSource.kind === 'rich'
+    const columns = isRich
       ? [['docNo', 'Document No.'], ['version', 'Version'], ['eqpNo', 'Eqp. No.'], ['title', 'Title'], ['docType', 'Document type'], ['status', 'Status'], ['publishDate', 'Publish date']]
       : [[null, 'Name'], [null, 'Path'], [null, 'Size']];
     for (const [key, label] of columns) {
@@ -488,7 +643,14 @@
   }
 
   function renderDocs() {
-    const isRich = currentSource.kind === 'rich';
+    if (!activeSourceId) {
+      el('docCount').textContent = '';
+      el('pageLabel').textContent = '';
+      el('docTableBody').innerHTML = '';
+      return;
+    }
+
+    const isRich = sourceCache.get(activeSourceId).kind === 'rich';
     let rows = isRich ? currentRichDocSet().slice() : currentPlainRowSet().slice();
 
     if (isRich) {
@@ -517,7 +679,7 @@
 
     const tbody = el('docTableBody');
     tbody.innerHTML = '';
-    for (const r of pageRows) tbody.appendChild(isRich ? renderRichRow(r) : renderPlainRow(r));
+    for (const r of pageRows) tbody.appendChild(isRich ? renderRichRow(activeSourceId, r) : renderPlainRow(activeSourceId, r));
   }
 
   function td(text) {
@@ -566,13 +728,20 @@
 
   function wireControls() {
     el('viewSelect').addEventListener('change', (e) => {
-      currentView = e.target.value;
-      rebuildDocsByNode();
-      buildRichTree();
+      if (!activeSourceId) return;
+      const data = sourceCache.get(activeSourceId);
+      data.currentView = e.target.value;
+      data.docsByNode = buildDocsByNode(data);
+      wholeSourceSelected = true;
+      selectedNodeKey = null;
+      page = 1;
+      markActiveRow(activeSourceId);
+      renderSourceBranch(activeSourceId);
+      refreshBreadcrumb();
+      renderDocs();
     });
 
-    el('showAllLevels').addEventListener('change', (e) => {
-      showAllLevels = e.target.checked;
+    el('showAllLevels').addEventListener('change', () => {
       page = 1;
       renderDocs();
     });
@@ -580,20 +749,12 @@
     el('prevPage').addEventListener('click', () => { page--; renderDocs(); });
     el('nextPage').addEventListener('click', () => { page++; renderDocs(); });
 
-    let searchDebounce;
     el('searchBox').addEventListener('input', (e) => {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
         searchTerm = e.target.value.trim();
         page = 1;
-        if (searchTerm) {
-          document.querySelectorAll('.node-row.active').forEach((r) => r.classList.remove('active'));
-          el('breadcrumb').innerHTML = `Search results for &ldquo;${escapeHtml(searchTerm)}&rdquo;`;
-        } else if (currentSource.kind === 'rich' && selectedNodeKey) {
-          renderRichBreadcrumb(selectedNodeKey);
-        } else if (currentSource.kind === 'plain' && selectedFolderPath) {
-          renderPlainBreadcrumb(selectedFolderPath);
-        }
+        refreshBreadcrumb();
         renderDocs();
       }, 200);
     });

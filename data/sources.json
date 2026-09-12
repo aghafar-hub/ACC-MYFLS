@@ -1,6 +1,9 @@
 {
   "sources": [
     { "id": "acc-line-1", "label": "ACC Line 1 (RAMLIYA CEMENT PLANT)", "kind": "rich", "driveFolderName": "ACC line 1" },
+    { "id": "new-bucket-elevators-cd", "label": "New Bucket Elevators - L1 (CD)", "parentSourceId": "acc-line-1", "kind": "rich", "driveFolderName": "New Bucket Elevators - L1/CD" },
+    { "id": "new-bucket-elevators-files", "label": "New Bucket Elevators - L1 (Files)", "parentSourceId": "acc-line-1", "kind": "plain", "driveFolderName": "New Bucket Elevators - L1" },
+
     { "id": "acc-line-2", "label": "ACC Line 2", "kind": "rich", "driveFolderName": "ACC line 2" },
     { "id": "myfls-cement-line-1", "label": "Myfls Cement Line 1", "kind": "rich", "driveFolderName": "Myfls Cement line 1" },
 
@@ -10,6 +13,15 @@
 
     { "id": "coal-acc-mill-extension", "label": "ACC Coal Mill-Extension", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/ACC Coal Mill-Extension" },
     { "id": "coal-myfls-coal-1", "label": "Myfls Coal-1", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/Myfls Coal-1" },
-    { "id": "coal-myfls-coal-2", "label": "Myfls Coal-2", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/Myfls Coal-2" }
+    { "id": "coal-myfls-coal-2", "label": "Myfls Coal-2", "group": "Coal Systems", "kind": "rich", "driveFolderName": "Coal systems/Myfls Coal-2" },
+
+    { "id": "packer-machines", "label": "Packer Machines", "group": "Packing Area", "kind": "plain", "driveFolderName": "Packing Area/packer machines" },
+    { "id": "packing-beumer-disc-1", "label": "Packing Beumer Disc 1", "group": "Packing Area", "kind": "plain", "driveFolderName": "Packing Area/Packing Beumer Disc 1" },
+    { "id": "packing-beumer-disc-2", "label": "Packing Beumer Disc 2", "group": "Packing Area", "kind": "plain", "driveFolderName": "Packing Area/Packing Beumer Disc 2" },
+
+    { "id": "cooler-upgrade", "label": "Cooler Upgrade", "kind": "plain", "driveFolderName": "cooler upgrade" },
+    { "id": "new-bag-filter-bf300", "label": "New Bag Filter BF300", "kind": "plain", "driveFolderName": "New Bag Filter BF300" },
+    { "id": "palletizer", "label": "Palletizer", "kind": "plain", "driveFolderName": "Palletizer" },
+    { "id": "material-standard", "label": "Material Standard", "kind": "plain", "driveFolderName": "Material Standard" }
   ]
 }
