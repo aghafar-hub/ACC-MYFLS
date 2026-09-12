@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RAMLIYA CEMENT PLANT &mdash; Documents</title>
+  <title>MyFLS &mdash; Document Browser</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">RAMLIYA CEMENT PLANT <span>Document Browser</span></div>
+    <div class="brand">MyFLS <span>Document Browser</span></div>
+    <div class="source-picker">
+      <select id="sourceSelect"></select>
+    </div>
     <div class="search">
-      <input id="searchBox" type="search" placeholder="Search document no. or title..." autocomplete="off" />
+      <input id="searchBox" type="search" placeholder="Search..." autocomplete="off" />
     </div>
     <div class="auth">
       <span id="authStatus" class="auth-status"></span>
@@ -20,8 +23,8 @@
   <main class="layout">
     <aside class="tree-panel">
       <div class="panel-title">
-        Complete project
-        <select id="viewSelect" class="view-select">
+        <span id="treePanelTitle">Complete project</span>
+        <select id="viewSelect" class="view-select" hidden>
           <option value="1">Process view</option>
           <option value="2">Discipline view</option>
         </select>
@@ -33,7 +36,7 @@
       <div class="breadcrumb" id="breadcrumb"></div>
 
       <div class="toolbar">
-        <label class="levels-toggle">
+        <label class="levels-toggle" id="showAllLevelsWrap">
           <input type="checkbox" id="showAllLevels" checked />
           Show all levels
         </label>
@@ -47,17 +50,7 @@
 
       <div class="table-wrap">
         <table id="docTable">
-          <thead>
-            <tr>
-              <th data-sort="docNo">Document No.</th>
-              <th data-sort="version">Version</th>
-              <th data-sort="eqpNo">Eqp. No.</th>
-              <th data-sort="title">Title</th>
-              <th data-sort="docType">Document type</th>
-              <th data-sort="status">Status</th>
-              <th data-sort="publishDate">Publish date</th>
-            </tr>
-          </thead>
+          <thead id="docTableHead"></thead>
           <tbody id="docTableBody"></tbody>
         </table>
       </div>

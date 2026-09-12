@@ -1,40 +1,96 @@
-# RAMLIYA CEMENT PLANT — Document Browser
+# MyFLS — Document Browser
 
-A static web app that recreates the navigation tree and search from the old
-myFLS "CD viewer" (`ACC line 1/html/mfcdappstart.html`), but opens each
+A static web app that recreates the navigation tree and search from the
+old myFLS "CD viewer" (`ACC line 1/html/mfcdappstart.html`), extended to
+cover every plant/project folder under `Desktop/MyFLS`, and opening each
 document from Google Drive instead of a local disk folder.
 
-- **`data/tree.json`** and **`data/documents.json`** — the navigation tree
-  and the full document index (6,998 documents), extracted once from the
-  original export's `js/view_*.js` tree files and `xml/*.xml` metadata.
-- **`index.html` / `app.js` / `style.css`** — the browser app: tree on the
-  left (with a Process view / Discipline view switcher, matching the
-  original's two views), search, sortable/paginated document table.
+## What's in this app
+
+A **source picker** at the top switches between 21 folders, in two kinds:
+
+- **Rich sources** (3) — real myFLS CD exports with a tree + document
+  database behind them: `ACC line 1` (RAMLIYA CEMENT PLANT, 6,998 docs),
+  `ACC line 2` (12,306 docs), `Myfls Cement line 1` (3,471 docs). These
+  get the full original experience: Process view / Discipline view
+  switcher, tree navigation, "show all levels," sortable/paginated table
+  with Document No./Version/Eqp. No./Title/Type/Status/Date, and search
+  across document numbers and titles.
+- **Plain sources** (18) — ordinary nested folders with no tree database
+  (`AF Systems`, `Coal systems`, `Palletizer`, `Projects`, etc., plus a
+  synthetic `General Files` source for the 5 loose files sitting directly
+  under `Desktop/MyFLS`). These get a simpler Explorer-style folder
+  browser: tree of subfolders on the left, current folder's contents
+  (name/path/size) on the right, search by file name across the whole
+  source.
+
+- **`data/sources.json`** — the manifest of all 21 sources (id, label,
+  kind, and the Drive folder name each maps to).
+- **`data/<source-id>/`** — one folder per source: `tree.json` +
+  `documents.json` for rich sources, `folderTree.json` for plain ones.
+  All generated, not hand-written (see "Regenerating the data" below).
+- **`index.html` / `app.js` / `style.css`** — the browser app itself.
 - Documents are opened through a small **Google Apps Script Web App**
   (free, no Google Cloud Console, no OAuth client, no billing account) so
   only people you approve can actually view the files — the tree/titles
-  are public (in the GitHub repo + Pages site), but the real drawings are
+  are public (in the GitHub repo + Pages site), but the real files are
   not.
 
 ## One-time setup
 
-You need to do three things before this works: upload the documents to
+You need to do three things before this works: mirror the folders to
 Drive, deploy the Apps Script, and fill in `config.js`.
 
-### 1. Upload the documents to Google Drive
+### 1. Mirror `Desktop/MyFLS` into one Google Drive folder
 
-Upload the entire local `documents/` folder (the one with ~6,946 files
-named like `05-46003-321-201_A1-L________1.0_EN.TIF`) into **one flat
-Google Drive folder** — keep the file names exactly as they are, no
-subfolders needed. The app looks files up by exact file name.
+Create **one Drive folder** (call it whatever you like, e.g. "MyFLS") and
+upload every one of these folders into it, **preserving their exact
+names and internal structure**:
 
-The easiest way for ~7,000 files is **Google Drive for Desktop**: install
-it, let it create a synced folder on your PC, then copy/move the
-`documents/` folder's contents into it and let it sync. Drag-and-drop
-through drive.google.com works too, just slower for this many files.
+```
+MyFLS/                                  <- this is your Drive root folder
+  ACC line 1/           (upload the WHOLE folder, including documents/, xml/, etc. -
+                          only documents/ is actually needed, but uploading the whole
+                          thing is simplest and harmless)
+  ACC line 2/
+  Myfls Cement line 1/
+  AF Systems/
+  Coal systems/
+  New Bucket Elevators - L1/
+  Projects/
+  Palletizer/
+  Packing Beumer Disc 1/
+  Packing Beumer Disc 2/
+  Bypass system (CM3,4)/
+  CM 3 and CM 4 modification/
+  New Bag Filter BF300/
+  new bag filter/
+  new compressor/
+  packer machines/
+  cement mill drawing/
+  cooler upgrade/
+  Material Standard/
+  Spechial DWG/
+  cooler upgrade.zip                    <- the 5 loose files go directly in
+  material code manual.PDF                 the Drive root, not in a subfolder
+  New FLENDER_DMG2 Gearbox_for (ACC) 46032567_EN.pdf
+  part list 40.pdf
+  Z-5435105 (002).pdf
+```
 
-Once uploaded, open the folder on drive.google.com and copy its id out of
-the URL:
+The names must match exactly (spelling, capitalization, punctuation) —
+the app builds each document's Drive path from these same names.
+
+For this many files/folders, **Google Drive for Desktop** is by far the
+easiest route: install it, let it create a synced folder on your PC, then
+copy the entire contents of `Desktop/MyFLS` into it (skip the
+`drive-viewer` folder itself — that's this app's source code, not a
+document set) and let it sync in the background. It can take a while
+given the volume (tens of GB across everything), so kick it off and let
+it run.
+
+Once uploaded, open your Drive root folder ("MyFLS") on drive.google.com
+and copy its id out of the URL:
 
 ```
 https://drive.google.com/drive/folders/<THIS_PART_IS_THE_FOLDER_ID>
@@ -51,9 +107,9 @@ no Cloud Console, no billing:
    project**.
 2. Delete the placeholder code and paste in the contents of
    [`scripts/AppsScript.gs`](scripts/AppsScript.gs) from this repo.
-3. Set `FOLDER_ID` near the top to the folder id from step 1. Optionally
-   list specific emails in `ALLOWED_EMAILS` for a tighter allow-list on
-   top of the deployment setting below.
+3. Set `ROOT_FOLDER_ID` near the top to the folder id from step 1.
+   Optionally list specific emails in `ALLOWED_EMAILS` for a tighter
+   allow-list on top of the deployment setting below.
 4. **Deploy → New deployment** → click the gear icon → type **Web app**.
    - Execute as: **Me**.
    - Who has access: **Anyone within arabiancementcompany.com** (this is
@@ -103,32 +159,53 @@ a minute or two later — no Apps Script setting needs to reference this
 URL, since access is controlled at the Apps Script deployment, not by
 origin.
 
-## Regenerating the data (if the source CD export ever changes)
+## Regenerating the data
 
-`data/tree.json` and `data/documents.json` are generated, not
-hand-written. If FLSmidth/the plant issues an updated export, re-run:
+Nothing under `data/` is hand-written.
+
+**Rich sources** (myFLS CD exports) — if FLSmidth/the plant issues an
+updated export for a plant, re-run:
 
 ```bash
-node scripts/extract.js "/path/to/ACC line 1" ./data
+node scripts/extract.js "/path/to/ACC line 1" ./data/acc-line-1
+node scripts/extract.js "/path/to/ACC line 2" ./data/acc-line-2
+node scripts/extract.js "/path/to/Myfls Cement line 1" ./data/myfls-cement-line-1
 ```
 
 This reads `js/view_1.js`, `js/view_2.js` and every file in `xml/` from
 the export root, cross-checks against `documents/` to flag any file
-referenced in the metadata but missing on disk, and rewrites the two JSON
-files. Commit and push the updated `data/` folder — no other code changes
-needed as long as the export's format hasn't changed.
+referenced in the metadata but missing on disk, and rewrites that
+source's two JSON files.
+
+**Plain sources** — if a project folder's contents change, re-run:
+
+```bash
+node scripts/extract-plain.js "/path/to/Coal systems" coal-systems ./data
+```
+
+(source id must match the `id` used in `data/sources.json`).
+
+**Adding a brand-new source** (a new plant export or a new project
+folder): run the appropriate script above into a new `data/<id>/`
+folder, then add one entry to `data/sources.json` with that `id`, a
+`label`, `kind` ("rich" or "plain"), and `driveFolderName` (the exact
+name of the corresponding folder once mirrored into Drive — see step 1
+above). No other code changes are needed.
 
 ## Known limitations
 
-- **Version history**: every revision of a document that has its own file
-  on the original CD is kept as a separate row (the legacy viewer's
-  default counts were sometimes lower, likely showing only current
-  revisions). Nothing is hidden; if you'd rather only show the latest
-  version per document number, that's a small follow-up to the extractor.
+- **Version history**: for rich sources, every revision of a document
+  that has its own file on the original CD is kept as a separate row
+  (the legacy viewer's default counts were sometimes lower, likely
+  showing only current revisions). Nothing is hidden; if you'd rather
+  only show the latest version per document number, that's a small
+  follow-up to the extractor.
 - **TIFF previews**: Google Drive's built-in preview does not always
   render multi-page TIFF scans well. Drive still lets you download the
   original file from the preview page.
-- This covers the `ACC line 1` export. If you want `ACC line 2` or other
-  plants in the same app, re-run `extract.js` against each export into
-  separate `data/` subfolders and add a plant switcher — ask if you want
-  that built out.
+- **Plain-source search** only matches file names, not folder names or
+  file contents.
+- **Opening a deeply nested plain-source file** (e.g. six folders deep in
+  `Palletizer`) walks that many folders one at a time inside the Apps
+  Script, so it can take a second or two longer than a rich-source
+  document, which is a flat one-hop lookup.
