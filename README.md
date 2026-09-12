@@ -10,15 +10,16 @@ document from Google Drive instead of a local disk folder.
 - **`index.html` / `app.js` / `style.css`** — the browser app: tree on the
   left (with a Process view / Discipline view switcher, matching the
   original's two views), search, sortable/paginated document table.
-- Documents are opened via the **Google Drive API**, gated behind
-  **Google Sign-In** so only people you approve can actually view the
-  files — the tree/titles are public (in the GitHub repo + Pages site),
-  but the real drawings are not.
+- Documents are opened through a small **Google Apps Script Web App**
+  (free, no Google Cloud Console, no OAuth client, no billing account) so
+  only people you approve can actually view the files — the tree/titles
+  are public (in the GitHub repo + Pages site), but the real drawings are
+  not.
 
 ## One-time setup
 
 You need to do three things before this works: upload the documents to
-Drive, create a Google OAuth client, and fill in `config.js`.
+Drive, deploy the Apps Script, and fill in `config.js`.
 
 ### 1. Upload the documents to Google Drive
 
@@ -39,33 +40,35 @@ the URL:
 https://drive.google.com/drive/folders/<THIS_PART_IS_THE_FOLDER_ID>
 ```
 
-### 2. Create a restricted Google OAuth client
+### 2. Deploy the Apps Script Web App
 
-This is what makes sign-in "restricted to specific people" rather than
-public:
+This is what makes opening a document "restricted to specific people"
+rather than public — and it needs nothing beyond a normal Google account,
+no Cloud Console, no billing:
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com/) and
-   create a new project (any name, e.g. "ramliya-doc-browser").
-2. **APIs & Services → Library** → enable the **Google Drive API**.
-3. **APIs & Services → OAuth consent screen**:
-   - User type: **External** (unless you have a Google Workspace domain,
-     in which case **Internal** restricts it to your domain automatically
-     and you can skip the test-user step below).
-   - Fill in the required app name/support email fields.
-   - Scopes: add `.../auth/drive.readonly` and `.../auth/userinfo.email`.
-   - **Leave publishing status as "Testing"** — in Testing mode, only the
-     test users you list below can ever complete sign-in; this is what
-     restricts access (no need to submit for Google verification).
-   - Under **Test users**, add every Google account (e.g. Gmail or work
-     Google account) that should be able to open documents.
-4. **APIs & Services → Credentials → Create Credentials → OAuth client
-   ID**:
-   - Application type: **Web application**.
-   - Authorized JavaScript origins: add the URL this app will be served
-     from, e.g. `https://<your-github-username>.github.io`.
-   - Create it, then copy the **Client ID** (looks like
-     `123-abc.apps.googleusercontent.com`). You don't need the secret —
-     browser apps only use the Client ID.
+1. Go to [script.google.com](https://script.google.com/) (signed in with
+   whichever Google account owns the Drive folder from step 1) → **New
+   project**.
+2. Delete the placeholder code and paste in the contents of
+   [`scripts/AppsScript.gs`](scripts/AppsScript.gs) from this repo.
+3. Set `FOLDER_ID` near the top to the folder id from step 1. Optionally
+   list specific emails in `ALLOWED_EMAILS` for a tighter allow-list on
+   top of the deployment setting below.
+4. **Deploy → New deployment** → click the gear icon → type **Web app**.
+   - Execute as: **Me**.
+   - Who has access: **Anyone within arabiancementcompany.com** (this is
+     the actual access control — only people signed into a Google account
+     on your domain can reach the script at all) — or **Anyone with a
+     Google account** if you'd rather rely on `ALLOWED_EMAILS` alone for a
+     narrower list regardless of domain.
+   - Deploy. The first time, it'll ask you to authorize the script's
+     access to your Drive — that's you (the owner) approving it once, not
+     something every viewer has to do.
+5. Copy the **Web app URL** it gives you (ends in `/exec`).
+
+If you ever edit `AppsScript.gs`, use **Deploy → Manage deployments →
+edit (pencil) → New version** to push the change live — saving the file
+alone doesn't update the deployed URL's behavior.
 
 ### 3. Fill in `config.js`
 
@@ -73,21 +76,15 @@ Edit [`config.js`](config.js) in this repo:
 
 ```js
 window.APP_CONFIG = {
-  GOOGLE_CLIENT_ID: 'xxxxx.apps.googleusercontent.com', // from step 2
-  DRIVE_FOLDER_ID: 'xxxxxxxxxxxxxxxxxxxxxxxx',           // from step 1
-  ALLOWED_EMAILS: [
-    'aghafar@arabiancementcompany.com',                  // optional extra allow-list
-  ],
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/xxxxx/exec', // from step 2
 };
 ```
 
-`ALLOWED_EMAILS` is an extra check inside the app itself, on top of the
-Google "Testing" test-user list from step 2. You can leave it empty and
-rely on the test-user list alone, or use both for defense in depth.
-
-None of these values are secret — an OAuth Client ID for a browser app is
-meant to be public; real access control comes from the Testing/test-user
-list in Google Cloud and the read-only Drive scope.
+This URL isn't secret — it's the same link people click to open a
+document anyway. Real access control lives in the Apps Script deployment
+settings (who can even reach it) and the `ALLOWED_EMAILS` list inside
+`AppsScript.gs` itself (not in this file, so it can't be tampered with
+from the browser).
 
 ## Publishing to GitHub Pages
 
@@ -101,9 +98,10 @@ git push -u origin main
 ```
 
 Then on GitHub: **Settings → Pages → Source: Deploy from branch → main /
-(root)**. The site will be live at
-`https://<you>.github.io/<repo-name>/` — use that exact origin (or a
-custom domain) as the "Authorized JavaScript origin" in step 2 above.
+(root)**. The site will be live at `https://<you>.github.io/<repo-name>/`
+a minute or two later — no Apps Script setting needs to reference this
+URL, since access is controlled at the Apps Script deployment, not by
+origin.
 
 ## Regenerating the data (if the source CD export ever changes)
 

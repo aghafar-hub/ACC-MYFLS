@@ -15,10 +15,6 @@
   let page = 1;
   let searchTerm = '';
 
-  let driveFilesByName = null; // Map(fileName -> {id, webViewLink}) once signed in
-  let tokenClient = null;
-  let accessToken = null;
-
   const el = (id) => document.getElementById(id);
 
   // ---------------- data loading ----------------
@@ -260,92 +256,28 @@
     return (s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // ---------------- Google Sign-In + Drive ----------------
+  // ---------------- opening documents via the Apps Script backend ----------------
+  //
+  // No OAuth/Cloud Console involved: a small Google Apps Script Web App
+  // (see scripts/AppsScript.gs) looks the file up in Drive and redirects to
+  // it. Google itself enforces who may even reach that URL, based on how
+  // the script is deployed (e.g. "Anyone within your domain") - see README.
 
   function initAuth() {
-    if (!window.google || !CFG.GOOGLE_CLIENT_ID || CFG.GOOGLE_CLIENT_ID.startsWith('YOUR_')) {
-      el('authStatus').textContent = 'Drive sign-in not configured yet (see README).';
-      el('signInBtn').disabled = true;
-      return;
+    if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
+      el('authStatus').textContent = 'Document opening not configured yet (see README).';
+    } else {
+      el('authStatus').textContent = '';
     }
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CFG.GOOGLE_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
-      callback: onTokenResponse,
-    });
-    el('signInBtn').addEventListener('click', () => tokenClient.requestAccessToken({ prompt: 'consent' }));
-    el('signOutBtn').addEventListener('click', signOut);
-  }
-
-  async function onTokenResponse(resp) {
-    if (resp.error) {
-      showToast('Sign-in failed: ' + resp.error);
-      return;
-    }
-    accessToken = resp.access_token;
-
-    const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).then((r) => r.json());
-
-    if (CFG.ALLOWED_EMAILS && CFG.ALLOWED_EMAILS.length && !CFG.ALLOWED_EMAILS.includes(userInfo.email)) {
-      showToast(`${userInfo.email} is not authorized to view these documents.`);
-      accessToken = null;
-      return;
-    }
-
-    el('signInBtn').hidden = true;
-    el('signOutBtn').hidden = false;
-    el('authStatus').textContent = `Signed in as ${userInfo.email} — loading Drive index...`;
-
-    await loadDriveIndex();
-    el('authStatus').textContent = `Signed in as ${userInfo.email} — ${driveFilesByName.size} files indexed on Drive`;
-  }
-
-  function signOut() {
-    if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
-    accessToken = null;
-    driveFilesByName = null;
-    el('signInBtn').hidden = false;
-    el('signOutBtn').hidden = true;
-    el('authStatus').textContent = '';
-  }
-
-  async function loadDriveIndex() {
-    driveFilesByName = new Map();
-    let pageToken = null;
-    const folderId = CFG.DRIVE_FOLDER_ID;
-    do {
-      const params = new URLSearchParams({
-        q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, webViewLink)',
-        pageSize: '1000',
-      });
-      if (pageToken) params.set('pageToken', pageToken);
-      const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const data = await res.json();
-      if (data.error) {
-        showToast('Drive error: ' + data.error.message);
-        break;
-      }
-      for (const f of data.files || []) driveFilesByName.set(f.name, f);
-      pageToken = data.nextPageToken;
-    } while (pageToken);
   }
 
   function openDocument(d) {
-    if (!accessToken || !driveFilesByName) {
-      showToast('Sign in with Google first to open documents.');
+    if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
+      showToast('Document opening is not configured yet (see README).');
       return;
     }
-    const file = driveFilesByName.get(d.fileName);
-    if (!file) {
-      showToast(`"${d.fileName}" was not found in the Drive folder yet.`);
-      return;
-    }
-    window.open(file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`, '_blank', 'noopener');
+    const url = `${CFG.APPS_SCRIPT_URL}?file=${encodeURIComponent(d.fileName)}`;
+    window.open(url, '_blank', 'noopener');
   }
 
   function showToast(msg) {
@@ -404,9 +336,7 @@
     await loadData();
     buildTree();
     wireControls();
-    // wait for GIS script to be ready
-    if (window.google && google.accounts) initAuth();
-    else window.addEventListener('load', () => setTimeout(initAuth, 300));
+    initAuth();
   }
 
   main();
