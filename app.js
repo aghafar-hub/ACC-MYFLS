@@ -3,6 +3,17 @@
 
   const CFG = window.APP_CONFIG || {};
   const PAGE_SIZE = 100;
+  const SESSION_KEY = 'myfls_session';
+  const THEME_KEY = 'myfls_theme';
+
+  const THEMES = [
+    { id: 'ocean-light', label: 'Ocean Light', bg: '#f4f6f8', accent: '#0b5fa5' },
+    { id: 'ocean-dark', label: 'Ocean Dark', bg: '#10161d', accent: '#4da3ff' },
+    { id: 'forest-light', label: 'Forest Light', bg: '#f4f7f4', accent: '#1a7f37' },
+    { id: 'forest-dark', label: 'Forest Dark', bg: '#0e1710', accent: '#43c15f' },
+    { id: 'slate-light', label: 'Slate Light', bg: '#f5f5f6', accent: '#52607a' },
+    { id: 'slate-dark', label: 'Slate Dark', bg: '#131417', accent: '#8b95a8' },
+  ];
 
   let SOURCES = [];
   let catalog = null; // { topSources: [...], groups: Map(label -> [sources]), nestedByParent: Map(parentId -> [sources]) }
@@ -30,8 +41,138 @@
     buildCatalog();
     buildSidebar();
     wireControls();
-    initAuth();
     el('breadcrumb').textContent = 'Select a plant or project from the left to begin.';
+  }
+
+  function getSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; }
+  }
+  function setSession(session) { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
+  function clearSession() { localStorage.removeItem(SESSION_KEY); }
+
+  // The Apps Script login handler redirects back here with the session
+  // token in the URL *fragment* (never sent to any server, unlike a query
+  // string) - pull it out once, store it, then scrub the URL.
+  function consumeLoginHash() {
+    if (!location.hash) return null;
+    const params = new URLSearchParams(location.hash.slice(1));
+    const token = params.get('token');
+    const error = params.get('error');
+    history.replaceState(null, '', location.pathname + location.search);
+    if (token) {
+      setSession({ token, email: params.get('email') || '', role: params.get('role') || 'user' });
+      return { ok: true };
+    }
+    if (error) return { error };
+    return null;
+  }
+
+  async function boot() {
+    const hashResult = consumeLoginHash();
+    const session = getSession();
+    if (hashResult && hashResult.error) {
+      showLoginScreen(hashResult.error);
+      return;
+    }
+    if (!session || !session.token) {
+      showLoginScreen();
+      return;
+    }
+    await showApp(session);
+  }
+
+  function wireLoginForm() {
+    const form = el('loginForm');
+    if (form.dataset.wired) return;
+    form.dataset.wired = '1';
+    form.action = CFG.APPS_SCRIPT_URL || '';
+    form.addEventListener('submit', (e) => {
+      if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
+        e.preventDefault();
+        showLoginError('Sign-in is not configured yet (see README).');
+      }
+      // otherwise: real form POST navigates to Apps Script, which
+      // redirects back here with a token (or an error) on the hash.
+    });
+  }
+
+  function showLoginError(msg) {
+    const box = el('loginError');
+    box.textContent = msg;
+    box.hidden = false;
+  }
+
+  function showLoginScreen(errorMsg) {
+    el('loginScreen').hidden = false;
+    el('appRoot').hidden = true;
+    if (errorMsg) showLoginError(errorMsg);
+    wireLoginForm();
+  }
+
+  async function showApp(session) {
+    el('loginScreen').hidden = true;
+    el('appRoot').hidden = false;
+    el('userEmail').textContent = session.email;
+    el('adminSection').hidden = session.role !== 'admin';
+
+    if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
+      el('authStatus').textContent = 'Document opening not configured yet (see README).';
+    } else {
+      el('authStatus').textContent = '';
+    }
+
+    buildThemeGrid();
+    wireSettingsPanel();
+    await main();
+  }
+
+  // ---------------- settings panel: themes + admin + sign out ----------------
+
+  function buildThemeGrid() {
+    const grid = el('themeGrid');
+    grid.innerHTML = '';
+    const current = localStorage.getItem(THEME_KEY) || 'ocean-light';
+    for (const t of THEMES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-swatch' + (t.id === current ? ' active' : '');
+      btn.style.setProperty('--sw-bg', t.bg);
+      btn.style.setProperty('--sw-accent', t.accent);
+      const preview = document.createElement('span');
+      preview.className = 'theme-swatch-preview';
+      const label = document.createElement('span');
+      label.className = 'theme-swatch-label';
+      label.textContent = t.label;
+      btn.appendChild(preview);
+      btn.appendChild(label);
+      btn.addEventListener('click', () => applyTheme(t.id));
+      grid.appendChild(btn);
+    }
+  }
+
+  function applyTheme(themeId) {
+    document.documentElement.dataset.theme = themeId;
+    localStorage.setItem(THEME_KEY, themeId);
+    buildThemeGrid();
+  }
+
+  function wireSettingsPanel() {
+    if (wireSettingsPanel._wired) return;
+    wireSettingsPanel._wired = true;
+
+    el('settingsBtn').addEventListener('click', () => { el('settingsPanel').hidden = false; });
+    el('settingsClose').addEventListener('click', () => { el('settingsPanel').hidden = true; });
+    document.querySelector('.settings-backdrop').addEventListener('click', () => { el('settingsPanel').hidden = true; });
+
+    el('openAdminBtn').addEventListener('click', () => {
+      const session = getSession();
+      window.open(`${CFG.APPS_SCRIPT_URL}?admin=1&token=${encodeURIComponent(session.token)}`, '_blank', 'noopener');
+    });
+
+    el('signOutBtn').addEventListener('click', () => {
+      clearSession();
+      location.reload();
+    });
   }
 
   function buildCatalog() {
@@ -696,23 +837,20 @@
   //
   // No OAuth/Cloud Console involved: a small Google Apps Script Web App
   // (see scripts/AppsScript.gs) resolves a path under the mirrored Drive
-  // root and redirects to it. Google itself enforces who may even reach
-  // that URL, based on how the script is deployed - see README.
-
-  function initAuth() {
-    if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
-      el('authStatus').textContent = 'Document opening not configured yet (see README).';
-    } else {
-      el('authStatus').textContent = '';
-    }
-  }
+  // root and redirects to it. The session token (from our own
+  // email+password login) identifies the caller to the script.
 
   function openViaAppsScript(drivePath) {
     if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
       showToast('Document opening is not configured yet (see README).');
       return;
     }
-    const url = `${CFG.APPS_SCRIPT_URL}?path=${encodeURIComponent(drivePath)}`;
+    const session = getSession();
+    if (!session || !session.token) {
+      showToast('Please sign in again.');
+      return;
+    }
+    const url = `${CFG.APPS_SCRIPT_URL}?path=${encodeURIComponent(drivePath)}&token=${encodeURIComponent(session.token)}`;
     window.open(url, '_blank', 'noopener');
   }
 
@@ -760,5 +898,5 @@
     });
   }
 
-  main();
+  boot();
 })();

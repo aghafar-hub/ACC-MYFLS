@@ -1,16 +1,14 @@
 /**
  * Paste this into a new project at script.google.com, fill in
- * ROOT_FOLDER_ID and (after running setupSettingsSheet() once)
- * SETTINGS_SHEET_ID below, then Deploy > New deployment > type "Web app".
- * See README.md for the full walkthrough. No Google Cloud Console, no
- * billing, no OAuth client needed.
+ * ROOT_FOLDER_ID, APP_URL and (after running setupSettingsSheet() or
+ * migrateToPasswordAuth() once) SETTINGS_SHEET_ID below, then Deploy >
+ * New deployment > type "Web app". See README.md for the full
+ * walkthrough. No Google Cloud Console, no billing, no OAuth client.
  *
- * Access control lives entirely in a Google Sheet (the "settings
- * database"), not in the deployment's "Who has access" setting - deploy
- * with "Anyone with a Google account" and let the AccessControl sheet
- * decide exactly who gets in. Manage it via the built-in admin page
- * (this script's URL with ?admin=1) rather than editing the sheet by
- * hand.
+ * This version uses its own email+password login (not Google Sign-In):
+ * passwords are hashed+salted (never stored in plain text) in a "Users"
+ * sheet, and a "Sessions" sheet holds short-lived random session tokens
+ * so the app can recognize a signed-in visitor on later requests.
  *
  * ROOT_FOLDER_ID must point to a Drive folder that mirrors the local
  * Desktop/MyFLS folder structure: one subfolder per plant/project, with
@@ -22,108 +20,209 @@
 
 const ROOT_FOLDER_ID = '17OeueXcCpoAdjaZYP7xeDzIU99lejH0X';
 
-// Fill this in after running setupSettingsSheet() once (see below) and
-// copying the id it logs.
+// Fill this in after running setupSettingsSheet() (fresh) or
+// migrateToPasswordAuth() (if you already had the old Google-identity
+// version's sheet) once - copy the id it logs.
 const SETTINGS_SHEET_ID = 'YOUR_SETTINGS_SHEET_ID';
 
-// Always treated as an admin, even if the sheet is empty, missing, or
-// this email isn't in it yet - a safety net so you can never lock
-// yourself out.
+// The GitHub Pages URL this app is served from - used to redirect back
+// after a successful login.
+const APP_URL = 'https://aghafar-hub.github.io/ACC-MYFLS/';
+
+// Seeded as an admin (with a random temp password logged once) if not
+// already present, so the app can never end up with zero admins.
 const BOOTSTRAP_ADMIN_EMAILS = ['aghafar@arabiancementcompany.com'];
 
-// ---------------- one-time setup ----------------
-// Run this once from the Apps Script editor (select it in the function
-// dropdown, click Run), then copy the id it logs (View > Logs) into
+const SESSION_TTL_HOURS = 12;
+const HASH_ITERATIONS = 10000;
+
+// ---------------- one-time setup / migration ----------------
+// Run ONE of these once from the Apps Script editor (select it in the
+// function dropdown, click Run), then copy the id it logs into
 // SETTINGS_SHEET_ID above.
+
+// Use this for a brand-new settings sheet.
 function setupSettingsSheet() {
-  const ss = SpreadsheetApp.create('MyFLS Document Browser - Access Control');
-  const sheet = ss.getActiveSheet();
-  sheet.setName('AccessControl');
-  sheet.getRange(1, 1, 1, 3).setValues([['Email', 'Role', 'AddedAt']]);
-  BOOTSTRAP_ADMIN_EMAILS.forEach((adminEmail) => {
-    sheet.appendRow([adminEmail.toLowerCase(), 'admin', new Date().toISOString()]);
-  });
+  const ss = SpreadsheetApp.create('MyFLS Document Browser - Settings');
+  const users = ss.getActiveSheet();
+  users.setName('Users');
+  users.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt']]);
+
+  const sessions = ss.insertSheet('Sessions');
+  sessions.getRange(1, 1, 1, 4).setValues([['Token', 'Email', 'CreatedAt', 'ExpiresAt']]);
+
+  seedBootstrapAdmins_(users);
   Logger.log('Created settings sheet. Set SETTINGS_SHEET_ID to: ' + ss.getId());
 }
 
-// ---------------- access control (backed by the sheet) ----------------
+// Use this INSTEAD if you already ran the old version's setupSettingsSheet()
+// and have an existing sheet with an "AccessControl" tab (Email/Role/AddedAt,
+// no passwords) - it upgrades that sheet in place rather than creating a
+// second one. Safe to run more than once.
+function migrateToPasswordAuth() {
+  const ss = SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+  let users = ss.getSheetByName('AccessControl') || ss.getSheetByName('Users');
+  if (!users) {
+    users = ss.insertSheet('Users');
+  } else if (users.getName() !== 'Users') {
+    users.setName('Users');
+  }
+  users.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt']]);
 
-function getSettingsSheet_() {
-  return SpreadsheetApp.openById(SETTINGS_SHEET_ID).getSheetByName('AccessControl');
+  // give every existing row without a password a random temp one
+  const data = users.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const email = data[i][0];
+    if (!email || data[i][2]) continue; // skip blank rows and rows that already have a hash
+    setTempPassword_(users, i + 1, email);
+  }
+
+  if (!ss.getSheetByName('Sessions')) {
+    const sessions = ss.insertSheet('Sessions');
+    sessions.getRange(1, 1, 1, 4).setValues([['Token', 'Email', 'CreatedAt', 'ExpiresAt']]);
+  }
+
+  seedBootstrapAdmins_(users);
+  Logger.log('Migration complete. SETTINGS_SHEET_ID: ' + ss.getId());
 }
 
-function getAccessList_() {
-  const sheet = getSettingsSheet_();
-  const values = sheet.getDataRange().getValues().slice(1); // skip header row
+function seedBootstrapAdmins_(usersSheet) {
+  const existing = usersSheet.getDataRange().getValues().slice(1).map((r) => String(r[0]).toLowerCase());
+  BOOTSTRAP_ADMIN_EMAILS.forEach((adminEmail) => {
+    const email = adminEmail.toLowerCase();
+    if (existing.indexOf(email) !== -1) return;
+    const salt = makeSalt_();
+    const tempPassword = Utilities.getUuid().slice(0, 8);
+    const hash = hashPassword_(tempPassword, salt);
+    usersSheet.appendRow([email, 'admin', hash, salt, new Date().toISOString()]);
+    Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this, then set a real password via the admin panel.');
+  });
+}
+
+function setTempPassword_(sheet, row, email) {
+  const salt = makeSalt_();
+  const tempPassword = Utilities.getUuid().slice(0, 8);
+  const hash = hashPassword_(tempPassword, salt);
+  sheet.getRange(row, 3, 1, 2).setValues([[hash, salt]]);
+  Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this, then set a real password via the admin panel.');
+}
+
+// ---------------- password hashing ----------------
+// Apps Script has no bcrypt/scrypt/Argon2 built in, so this stretches
+// SHA-256 many times as a reasonable best-effort substitute. Never store
+// or log a password itself once set - only its hash.
+
+function makeSalt_() {
+  return Utilities.getUuid();
+}
+
+function hashPassword_(password, salt) {
+  let value = String(password) + ':' + salt;
+  for (let i = 0; i < HASH_ITERATIONS; i++) {
+    const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value + salt);
+    value = digest.map((b) => ((b + 256) % 256).toString(16).padStart(2, '0')).join('');
+  }
+  return value;
+}
+
+function verifyPassword_(password, salt, expectedHash) {
+  return hashPassword_(password, salt) === expectedHash;
+}
+
+// ---------------- users sheet ----------------
+
+function getUsersSheet_() {
+  return SpreadsheetApp.openById(SETTINGS_SHEET_ID).getSheetByName('Users');
+}
+
+function getUserList_() {
+  const values = getUsersSheet_().getDataRange().getValues().slice(1);
   return values
     .filter((r) => r[0])
-    .map((r) => ({ email: String(r[0]).toLowerCase().trim(), role: r[1] || 'user', addedAt: r[2] }));
+    .map((r) => ({ email: String(r[0]).toLowerCase().trim(), role: r[1] || 'user', passwordHash: r[2] || '', salt: r[3] || '', createdAt: r[4] || '' }));
 }
 
-function isBootstrapAdmin_(email) {
-  const e = (email || '').toLowerCase();
-  return BOOTSTRAP_ADMIN_EMAILS.some((a) => a.toLowerCase() === e);
+function findUser_(email) {
+  const e = (email || '').toLowerCase().trim();
+  return getUserList_().find((u) => u.email === e) || null;
 }
 
-function isAllowed_(email) {
-  if (isBootstrapAdmin_(email)) return true;
-  const e = (email || '').toLowerCase();
-  try {
-    return getAccessList_().some((u) => u.email === e);
-  } catch (err) {
-    return false; // sheet not configured yet - fail closed except for bootstrap admins
-  }
-}
-
-function isAdmin_(email) {
-  if (isBootstrapAdmin_(email)) return true;
-  const e = (email || '').toLowerCase();
-  try {
-    return getAccessList_().some((u) => u.email === e && u.role === 'admin');
-  } catch (err) {
-    return false;
-  }
-}
-
-function addUser_(email, role) {
-  const sheet = getSettingsSheet_();
-  const list = getAccessList_();
+function upsertUser_(email, role, password) {
+  const sheet = getUsersSheet_();
+  const list = getUserList_();
   const idx = list.findIndex((u) => u.email === email);
+  const salt = makeSalt_();
+  const hash = hashPassword_(password, salt);
   if (idx !== -1) {
-    sheet.getRange(idx + 2, 2).setValue(role); // +2: header row + 0-index
+    sheet.getRange(idx + 2, 2, 1, 4).setValues([[role, hash, salt, list[idx].createdAt || new Date().toISOString()]]);
   } else {
-    sheet.appendRow([email, role, new Date().toISOString()]);
+    sheet.appendRow([email, role, hash, salt, new Date().toISOString()]);
   }
 }
 
 function removeUser_(email) {
-  const sheet = getSettingsSheet_();
+  const sheet = getUsersSheet_();
   const values = sheet.getDataRange().getValues();
   for (let i = values.length - 1; i >= 1; i--) {
     if (String(values[i][0]).toLowerCase().trim() === email) sheet.deleteRow(i + 1);
   }
 }
 
-// ---------------- web app entry point ----------------
+// ---------------- sessions ----------------
+
+function getSessionsSheet_() {
+  return SpreadsheetApp.openById(SETTINGS_SHEET_ID).getSheetByName('Sessions');
+}
+
+function createSession_(email) {
+  const sheet = getSessionsSheet_();
+  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  const now = new Date();
+  const expires = new Date(now.getTime() + SESSION_TTL_HOURS * 3600 * 1000);
+  sheet.appendRow([token, email, now.toISOString(), expires.toISOString()]);
+  return token;
+}
+
+function getSessionEmail_(token) {
+  if (!token) return null;
+  const values = getSessionsSheet_().getDataRange().getValues();
+  const now = new Date();
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][0] === token) {
+      if (new Date(values[i][3]) < now) return null; // expired
+      return String(values[i][1]).toLowerCase();
+    }
+  }
+  return null;
+}
+
+function deleteSession_(token) {
+  const values = getSessionsSheet_().getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (values[i][0] === token) getSessionsSheet_().deleteRow(i + 1);
+  }
+}
+
+function isAdmin_(email) {
+  const u = findUser_(email);
+  return !!u && u.role === 'admin';
+}
+
+// ---------------- web app entry points ----------------
 
 function doGet(e) {
-  const email = Session.getActiveUser().getEmail();
+  if (e.parameter.admin === '1') return handleAdminPage_(e);
+
+  const email = getSessionEmail_(e.parameter.token);
   if (!email) {
-    return htmlMsg_('Could not determine your Google account email. Make sure you are signed in to Google in this browser.');
+    return htmlMsg_('Your session has expired or you are not signed in. Go back to the app and sign in again.');
   }
-
-  if (e.parameter.admin === '1') {
-    return handleAdminPage_(e, email);
-  }
-
-  if (!isAllowed_(email)) {
-    return htmlMsg_(email + ' is not authorized to use this app yet. Ask your administrator to add you.');
+  if (!findUser_(email)) {
+    return htmlMsg_(email + ' is not authorized to use this app. Ask your administrator to add you.');
   }
 
   const path = e.parameter.path;
-  if (!path) {
-    return htmlMsg_('Missing "path" parameter.');
-  }
+  if (!path) return htmlMsg_('Missing "path" parameter.');
 
   const segments = path.split('/').filter(Boolean);
   const fileName = segments.pop();
@@ -138,50 +237,103 @@ function doGet(e) {
   for (const seg of segments) {
     const it = folder.getFoldersByName(seg);
     if (!it.hasNext()) {
-      return htmlMsg_('Folder "' + seg + '" not found under Drive path "' + path + '". ' +
-        'Has this been uploaded to Drive yet?');
+      return htmlMsg_('Folder "' + seg + '" not found under Drive path "' + path + '". Has this been uploaded to Drive yet?');
     }
     folder = it.next();
   }
 
   const files = folder.getFilesByName(fileName);
   if (!files.hasNext()) {
-    return htmlMsg_('"' + fileName + '" was not found in Drive at "' + path + '". ' +
-      'It may not be uploaded yet.');
+    return htmlMsg_('"' + fileName + '" was not found in Drive at "' + path + '". It may not be uploaded yet.');
   }
 
-  const url = files.next().getUrl(); // https://drive.google.com/file/d/<id>/view
+  const url = files.next().getUrl();
   return HtmlService.createHtmlOutput(
     '<script>window.location.replace(' + JSON.stringify(url) + ');</script>' +
-    '<p>Opening ' + escapeHtml_(fileName) + '... ' +
-    '<a href="' + url + '">Click here</a> if you are not redirected.</p>'
+    '<p>Opening ' + escapeHtml_(fileName) + '... <a href="' + url + '">Click here</a> if you are not redirected.</p>'
   );
+}
+
+function doPost(e) {
+  const action = e.parameter.action;
+  if (action === 'login') return handleLogin_(e);
+  if (action === 'logout') return handleLogout_(e);
+  if (action === 'admin-add' || action === 'admin-remove') return handleAdminMutation_(e);
+  return htmlMsg_('Unknown action.');
+}
+
+// ---------------- login / logout ----------------
+
+function handleLogin_(e) {
+  const email = (e.parameter.email || '').trim().toLowerCase();
+  const password = e.parameter.password || '';
+  const user = findUser_(email);
+
+  if (!user || !verifyPassword_(password, user.salt, user.passwordHash)) {
+    return redirectHtml_(APP_URL + '#error=' + encodeURIComponent('Incorrect email or password.'));
+  }
+
+  const token = createSession_(email);
+  return redirectHtml_(APP_URL + '#token=' + encodeURIComponent(token) + '&email=' + encodeURIComponent(email) + '&role=' + encodeURIComponent(user.role));
+}
+
+function handleLogout_(e) {
+  if (e.parameter.token) deleteSession_(e.parameter.token);
+  return redirectHtml_(APP_URL);
 }
 
 // ---------------- admin page ----------------
 
-function handleAdminPage_(e, email) {
-  if (!isAdmin_(email)) {
-    return htmlMsg_(email + ' is not an administrator of this app.');
+function handleAdminPage_(e) {
+  const email = getSessionEmail_(e.parameter.token);
+  if (!email || !isAdmin_(email)) {
+    return htmlMsg_('You must be signed in as an administrator to view this page. Go back to the app, sign in, then open Settings > Admin.');
+  }
+  return renderAdminPage_(email, e.parameter.token, '');
+}
+
+function handleAdminMutation_(e) {
+  const email = getSessionEmail_(e.parameter.token);
+  if (!email || !isAdmin_(email)) {
+    return htmlMsg_('You must be signed in as an administrator to do that.');
   }
 
-  const action = e.parameter.action;
-  if (action === 'add' && e.parameter.email) {
-    const newEmail = e.parameter.email.trim().toLowerCase();
+  let notice = '';
+  if (e.parameter.action === 'admin-add') {
+    const newEmail = (e.parameter.email || '').trim().toLowerCase();
     const role = e.parameter.role === 'admin' ? 'admin' : 'user';
-    addUser_(newEmail, role);
-  } else if (action === 'remove' && e.parameter.email) {
-    removeUser_(e.parameter.email.trim().toLowerCase());
+    const password = e.parameter.password || '';
+    if (!newEmail || password.length < 6) {
+      notice = 'Email is required and password must be at least 6 characters.';
+    } else {
+      upsertUser_(newEmail, role, password);
+      notice = 'Saved ' + newEmail + '.';
+    }
+  } else if (e.parameter.action === 'admin-remove') {
+    const targetEmail = (e.parameter.email || '').trim().toLowerCase();
+    if (targetEmail === email) {
+      notice = "You can't remove your own account while signed in as it.";
+    } else {
+      removeUser_(targetEmail);
+      notice = 'Removed ' + targetEmail + '.';
+    }
   }
 
+  return renderAdminPage_(email, e.parameter.token, notice);
+}
+
+function renderAdminPage_(email, token, notice) {
   const baseUrl = ScriptApp.getService().getUrl();
-  const list = getAccessList_();
+  const list = getUserList_();
 
   const rows = list.map((u) => {
-    const removeUrl = baseUrl + '?admin=1&action=remove&email=' + encodeURIComponent(u.email);
     return (
       '<tr><td>' + escapeHtml_(u.email) + '</td><td>' + escapeHtml_(u.role) + '</td>' +
-      '<td><a href="' + removeUrl + '" onclick="return confirm(\'Remove ' + escapeHtml_(u.email) + '?\')">Remove</a></td></tr>'
+      '<td><form method="post" action="' + baseUrl + '" onsubmit="return confirm(\'Remove ' + escapeHtml_(u.email) + '?\')">' +
+      '<input type="hidden" name="action" value="admin-remove" />' +
+      '<input type="hidden" name="token" value="' + escapeHtml_(token) + '" />' +
+      '<input type="hidden" name="email" value="' + escapeHtml_(u.email) + '" />' +
+      '<button type="submit">Remove</button></form></td></tr>'
     );
   }).join('');
 
@@ -190,27 +342,36 @@ function handleAdminPage_(e, email) {
     'body{font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#1c2733;}' +
     'h1{font-size:18px;} table{width:100%;border-collapse:collapse;margin:16px 0;}' +
     'th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-size:14px;}' +
-    'form{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}' +
+    'form.add-form{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}' +
     'input,select,button{padding:7px;font-size:14px;} button{cursor:pointer;}' +
-    'a{color:#0b5fa5;}' +
+    '.notice{background:#eaf2fa;padding:8px 12px;border-radius:4px;margin:12px 0;}' +
     '</style></head><body>' +
     '<h1>Manage document browser access</h1>' +
     '<p>Signed in as ' + escapeHtml_(email) + '.</p>' +
+    (notice ? '<p class="notice">' + escapeHtml_(notice) + '</p>' : '') +
     '<table><tr><th>Email</th><th>Role</th><th></th></tr>' + rows + '</table>' +
-    '<form method="get" action="' + baseUrl + '">' +
-    '<input type="hidden" name="admin" value="1" />' +
-    '<input type="hidden" name="action" value="add" />' +
+    '<p>Add a user, or re-enter an existing email with a new password to reset it:</p>' +
+    '<form class="add-form" method="post" action="' + baseUrl + '">' +
+    '<input type="hidden" name="action" value="admin-add" />' +
+    '<input type="hidden" name="token" value="' + escapeHtml_(token) + '" />' +
     '<input type="email" name="email" placeholder="name@example.com" required />' +
+    '<input type="password" name="password" placeholder="password (min 6 chars)" minlength="6" required />' +
     '<select name="role"><option value="user">user</option><option value="admin">admin</option></select>' +
-    '<button type="submit">Add</button>' +
+    '<button type="submit">Save</button>' +
     '</form>' +
     '</body></html>';
 
   return HtmlService.createHtmlOutput(html);
 }
 
+// ---------------- helpers ----------------
+
+function redirectHtml_(url) {
+  return HtmlService.createHtmlOutput('<script>window.location.replace(' + JSON.stringify(url) + ');</script>');
+}
+
 function htmlMsg_(text) {
-  return HtmlService.createHtmlOutput('<p>' + escapeHtml_(text) + '</p>');
+  return HtmlService.createHtmlOutput('<p style="font-family:Arial,Helvetica,sans-serif">' + escapeHtml_(text) + '</p>');
 }
 
 function escapeHtml_(s) {

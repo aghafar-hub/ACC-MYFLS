@@ -65,18 +65,31 @@ ones) are intentionally left out for now — see "Regenerating the data."
 
 ## Access control
 
-There's no login page in the app itself — it relies on the visitor
-already being signed into a Google account in their browser (which
-Apps Script can read), checked against an **access list stored in a
-Google Sheet** (the "settings database"). Only emails in that sheet can
-open documents; everyone else gets a polite "not authorized" message.
+The app has its own **email + password login screen** — not Google
+Sign-In. Accounts (email, a salted+hashed password, and a role) live in
+a **Google Sheet** (the "settings database"); signing in gets you a
+random session token, stored in your browser, that identifies you on
+every later request.
 
-One or more people are **admins**: they get an extra management page
-(the Apps Script URL with `?admin=1` appended) to add or remove allowed
-emails, with no spreadsheet editing required. `aghafar@arabiancementcompany.com`
-is hardcoded as a permanent bootstrap admin in `AppsScript.gs` — a
-safety net so the app can never be locked with no admin able to get
-back in, even if the sheet is deleted or misconfigured.
+**Worth knowing plainly**: this is a real security trade-off versus
+Google Sign-In. We're now responsible for password storage and session
+handling ourselves, in a platform (Apps Script) that has no
+bcrypt/scrypt/Argon2 built in — `AppsScript.gs` stretches SHA-256
+10,000 times per password as a reasonable best effort, but that's still
+weaker than what Google provides for free, and there's no 2FA, no
+breach-detection, no password-reset-by-email flow yet. It was chosen
+deliberately so people without a Google account can still get in;
+treat the account list as sensitive and keep it small.
+
+One or more people are **admins**: from the app's **Settings** panel
+(gear icon, top right) they get a "Manage users" button that opens a
+page to add, remove, or reset the password for anyone — no spreadsheet
+editing required. `aghafar@arabiancementcompany.com` is hardcoded as a
+permanent bootstrap admin in `AppsScript.gs` — a safety net so the app
+can never end up with no admin able to get back in.
+
+Everyone can also open **Settings** to pick one of 6 color themes
+(3 hues × light/dark) — saved per-browser, not shared.
 
 ## One-time setup
 
@@ -137,34 +150,52 @@ it run.
 1. Go to [script.google.com](https://script.google.com/) (signed in
    with the Google account that should own this — `aghafar@arabiancementcompany.com`
    is a reasonable choice since it's the bootstrap admin) → **New
-   project**.
-2. Delete the placeholder code and paste in the contents of
+   project** (or open the one you already created).
+2. Delete everything in the editor and paste in the current contents of
    [`scripts/AppsScript.gs`](scripts/AppsScript.gs) from this repo.
-   `ROOT_FOLDER_ID` is already set to the Drive folder from step 1.
-3. **Create the settings sheet**: in the function dropdown near the Run
-   button, select `setupSettingsSheet`, then click Run. The first time,
-   it'll ask you to authorize the script (Sheets + Drive access) — approve
-   it. Then open **View → Logs** (or **Executions**) and copy the sheet
-   id it printed.
-4. Paste that id into `SETTINGS_SHEET_ID` near the top of the script.
-5. **Deploy → New deployment** → click the gear icon → type **Web app**.
+   `ROOT_FOLDER_ID` and `APP_URL` are already set correctly.
+3. **Create/upgrade the settings sheet** — pick whichever applies:
+   - **Never ran a setup function before**: select `setupSettingsSheet`
+     in the function dropdown, click **Run**.
+   - **Already ran the old `setupSettingsSheet()`** (an `AccessControl`
+     sheet with just Email/Role/AddedAt already exists): select
+     `migrateToPasswordAuth` instead, click **Run**. This upgrades that
+     same sheet in place rather than creating a second one.
+   - Either way, the first run asks you to authorize the script (Sheets
+     access) — approve it, then open **View → Executions** (or
+     **Logs**) and copy the sheet id it printed, plus any **temp
+     password** lines it logged for existing users (including the
+     bootstrap admin) — you'll need those to log in the first time.
+4. Paste the sheet id into `SETTINGS_SHEET_ID` near the top of the
+   script.
+5. **Deploy → Manage deployments** (if you already had a deployment
+   from before) → pencil/edit icon, or **Deploy → New deployment** if
+   this is the first time → gear icon → **Web app**.
    - Execute as: **Me**.
-   - Who has access: **Anyone with a Google account** — the sheet from
-     step 3/4 is the real access control, not this setting; this just
-     lets any Google account technically reach the script, and the
-     access list decides who actually gets past the door.
+   - Who has access: **Anyone** — this app no longer relies on Google
+     identity at all, so visitors don't need a Google account either;
+     the email+password check inside the script is the real gate.
+   - Version: **New version** if editing an existing deployment.
    - Deploy. Approve any additional authorization prompts.
-6. Copy the **Web app URL** it gives you (ends in `/exec`).
+6. Copy the **Web app URL** (ends in `/exec`) if this is a first-time
+   deploy — editing an existing deployment keeps the same URL, so
+   `config.js` doesn't need to change.
 
-If you ever edit `AppsScript.gs`, use **Deploy → Manage deployments →
-edit (pencil) → New version** to push the change live — saving the file
-alone doesn't update the deployed URL's behavior.
+If you previously set "Execute as: User accessing the web app" and
+shared the Drive folder with your domain to work around the old
+Google-identity limitation, that's no longer necessary — "Execute as:
+Me" is back now that identity comes from our own login, and it's
+simpler (no per-visitor Google authorization prompt). Leaving the Drive
+folder shared doesn't hurt anything, though.
 
-**Managing who has access**: visit `<your Web App URL>?admin=1` while
-signed in as an admin (the bootstrap admin, or anyone you've granted the
-`admin` role) to add or remove emails — no spreadsheet needed. You can
-still open the underlying Google Sheet directly if you ever want to see
-the raw list.
+If you ever edit `AppsScript.gs` again, use **Deploy → Manage
+deployments → edit (pencil) → New version** to push the change live —
+saving the file alone doesn't update the deployed URL's behavior.
+
+**Managing who has access**: sign into the app, open **Settings** (gear
+icon) → **Manage users**. The very first login has to use one of the
+temp passwords logged in step 3 above; change it to something real via
+that same page (re-enter that email with a new password to reset it).
 
 ### 3. Fill in `config.js`
 

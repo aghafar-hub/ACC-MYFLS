@@ -14,58 +14,119 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MyFLS Docs" />
+
+  <script>
+    // Applied before first paint to avoid a flash of the wrong theme.
+    (function () {
+      try {
+        var t = localStorage.getItem('myfls_theme');
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
-      <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
-      <span class="brand-text">Document Browser</span>
-    </div>
-    <div class="search">
-      <input id="searchBox" type="search" placeholder="Search..." autocomplete="off" />
-    </div>
-    <div class="auth">
-      <span id="authStatus" class="auth-status"></span>
-    </div>
-  </header>
-
-  <main class="layout">
-    <aside class="tree-panel">
-      <div class="panel-title">
-        <span id="treePanelTitle">Plants &amp; Projects</span>
-        <select id="viewSelect" class="view-select" hidden>
-          <option value="1">Process view</option>
-          <option value="2">Discipline view</option>
-        </select>
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logos">
+        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
+        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
       </div>
-      <ul id="tree" class="tree"></ul>
-    </aside>
-
-    <section class="doc-panel">
-      <div class="breadcrumb" id="breadcrumb"></div>
-
-      <div class="toolbar">
-        <label class="levels-toggle" id="showAllLevelsWrap">
-          <input type="checkbox" id="showAllLevels" checked />
-          Show all levels
+      <h1>MyFLS Document Browser</h1>
+      <p id="loginError" class="login-error" hidden></p>
+      <form id="loginForm" method="post">
+        <input type="hidden" name="action" value="login" />
+        <label>Email
+          <input type="email" name="email" required autocomplete="username" />
         </label>
-        <span id="docCount" class="doc-count"></span>
-        <div class="pager">
-          <button id="prevPage" class="btn small">&lsaquo;</button>
-          <span id="pageLabel"></span>
-          <button id="nextPage" class="btn small">&rsaquo;</button>
+        <label>Password
+          <input type="password" name="password" required autocomplete="current-password" />
+        </label>
+        <button type="submit" class="btn primary">Sign in</button>
+      </form>
+      <p class="login-hint">Ask your administrator if you don't have an account yet.</p>
+    </div>
+  </div>
+
+  <div id="appRoot" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
+        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
+        <span class="brand-text">Document Browser</span>
+      </div>
+      <div class="search">
+        <input id="searchBox" type="search" placeholder="Search..." autocomplete="off" />
+      </div>
+      <div class="auth">
+        <span id="authStatus" class="auth-status"></span>
+        <span id="userEmail" class="user-email"></span>
+        <button id="settingsBtn" class="btn icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="tree-panel">
+        <div class="panel-title">
+          <span id="treePanelTitle">Plants &amp; Projects</span>
+          <select id="viewSelect" class="view-select" hidden>
+            <option value="1">Process view</option>
+            <option value="2">Discipline view</option>
+          </select>
         </div>
+        <ul id="tree" class="tree"></ul>
+      </aside>
+
+      <section class="doc-panel">
+        <div class="breadcrumb" id="breadcrumb"></div>
+
+        <div class="toolbar">
+          <label class="levels-toggle" id="showAllLevelsWrap">
+            <input type="checkbox" id="showAllLevels" checked />
+            Show all levels
+          </label>
+          <span id="docCount" class="doc-count"></span>
+          <div class="pager">
+            <button id="prevPage" class="btn small">&lsaquo;</button>
+            <span id="pageLabel"></span>
+            <button id="nextPage" class="btn small">&rsaquo;</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="docTable">
+            <thead id="docTableHead"></thead>
+            <tbody id="docTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="settingsPanel" class="settings-panel" hidden>
+    <div class="settings-backdrop"></div>
+    <div class="settings-card">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="settingsClose" class="btn icon-btn" aria-label="Close">&times;</button>
       </div>
 
-      <div class="table-wrap">
-        <table id="docTable">
-          <thead id="docTableHead"></thead>
-          <tbody id="docTableBody"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+      <section class="settings-section">
+        <h3>Theme</h3>
+        <div id="themeGrid" class="theme-grid"></div>
+      </section>
+
+      <section class="settings-section" id="adminSection" hidden>
+        <h3>Admin</h3>
+        <p>Add, remove, or reset passwords for people who can use this app.</p>
+        <button id="openAdminBtn" class="btn">Manage users</button>
+      </section>
+
+      <section class="settings-section">
+        <button id="signOutBtn" class="btn secondary">Sign out</button>
+      </section>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 
