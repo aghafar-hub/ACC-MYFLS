@@ -46,7 +46,7 @@ function setupSettingsSheet() {
   const ss = SpreadsheetApp.create('MyFLS Document Browser - Settings');
   const users = ss.getActiveSheet();
   users.setName('Users');
-  users.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt']]);
+  users.getRange(1, 1, 1, 6).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt', 'MustChangePassword']]);
 
   const sessions = ss.insertSheet('Sessions');
   sessions.getRange(1, 1, 1, 4).setValues([['Token', 'Email', 'CreatedAt', 'ExpiresAt']]);
@@ -67,7 +67,7 @@ function migrateToPasswordAuth() {
   } else if (users.getName() !== 'Users') {
     users.setName('Users');
   }
-  users.getRange(1, 1, 1, 5).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt']]);
+  users.getRange(1, 1, 1, 6).setValues([['Email', 'Role', 'PasswordHash', 'Salt', 'CreatedAt', 'MustChangePassword']]);
 
   // give every existing row without a password a random temp one. Check
   // the Salt column (D), not PasswordHash (C) - the old 3-column schema
@@ -102,8 +102,8 @@ function seedBootstrapAdmins_(usersSheet) {
     const salt = makeSalt_();
     const tempPassword = Utilities.getUuid().slice(0, 8);
     const hash = hashPassword_(tempPassword, salt);
-    usersSheet.appendRow([email, 'admin', hash, salt, new Date().toISOString()]);
-    Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this, then set a real password via the admin panel.');
+    usersSheet.appendRow([email, 'admin', hash, salt, new Date().toISOString(), true]);
+    Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this; you will be prompted to set a real password.');
   });
 }
 
@@ -112,7 +112,8 @@ function setTempPassword_(sheet, row, email) {
   const tempPassword = Utilities.getUuid().slice(0, 8);
   const hash = hashPassword_(tempPassword, salt);
   sheet.getRange(row, 3, 1, 2).setValues([[hash, salt]]);
-  Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this, then set a real password via the admin panel.');
+  sheet.getRange(row, 6).setValue(true); // MustChangePassword
+  Logger.log('Temp password for ' + email + ': ' + tempPassword + ' - sign in with this; you will be prompted to set a real password.');
 }
 
 // ---------------- Drive manifest export (for direct-link mode) ----------------
@@ -188,7 +189,14 @@ function getUserList_() {
   const values = getUsersSheet_().getDataRange().getValues().slice(1);
   return values
     .filter((r) => r[0])
-    .map((r) => ({ email: String(r[0]).toLowerCase().trim(), role: r[1] || 'user', passwordHash: r[2] || '', salt: r[3] || '', createdAt: r[4] || '' }));
+    .map((r) => ({
+      email: String(r[0]).toLowerCase().trim(),
+      role: r[1] || 'user',
+      passwordHash: r[2] || '',
+      salt: r[3] || '',
+      createdAt: r[4] || '',
+      mustChangePassword: r[5] === true || String(r[5]).toUpperCase() === 'TRUE',
+    }));
 }
 
 function findUser_(email) {
@@ -196,6 +204,10 @@ function findUser_(email) {
   return getUserList_().find((u) => u.email === e) || null;
 }
 
+// Used by the admin panel to add a user or reset someone's password.
+// Marks the account as needing a password change on next login, since
+// an admin-issued password is provisional until the person personalizes
+// it via the self-service change-password screen.
 function upsertUser_(email, role, password) {
   const sheet = getUsersSheet_();
   const list = getUserList_();
@@ -203,10 +215,24 @@ function upsertUser_(email, role, password) {
   const salt = makeSalt_();
   const hash = hashPassword_(password, salt);
   if (idx !== -1) {
-    sheet.getRange(idx + 2, 2, 1, 4).setValues([[role, hash, salt, list[idx].createdAt || new Date().toISOString()]]);
+    sheet.getRange(idx + 2, 2, 1, 5).setValues([[role, hash, salt, list[idx].createdAt || new Date().toISOString(), true]]);
   } else {
-    sheet.appendRow([email, role, hash, salt, new Date().toISOString()]);
+    sheet.appendRow([email, role, hash, salt, new Date().toISOString(), true]);
   }
+}
+
+// Used by the self-service change-password screen: updates the
+// password and clears the "must change" flag, without touching role.
+function setUserPassword_(email, newPassword) {
+  const sheet = getUsersSheet_();
+  const list = getUserList_();
+  const idx = list.findIndex((u) => u.email === email);
+  if (idx === -1) return false;
+  const salt = makeSalt_();
+  const hash = hashPassword_(newPassword, salt);
+  sheet.getRange(idx + 2, 3, 1, 2).setValues([[hash, salt]]);
+  sheet.getRange(idx + 2, 6).setValue(false);
+  return true;
 }
 
 function removeUser_(email) {
@@ -307,11 +333,12 @@ function doPost(e) {
   const action = e.parameter.action;
   if (action === 'login') return handleLogin_(e);
   if (action === 'logout') return handleLogout_(e);
+  if (action === 'change-password') return handleChangePassword_(e);
   if (action === 'admin-add' || action === 'admin-remove') return handleAdminMutation_(e);
   return htmlMsg_('Unknown action.');
 }
 
-// ---------------- login / logout ----------------
+// ---------------- login / logout / change password ----------------
 
 function handleLogin_(e) {
   const email = (e.parameter.email || '').trim().toLowerCase();
@@ -323,12 +350,33 @@ function handleLogin_(e) {
   }
 
   const token = createSession_(email);
-  return redirectHtml_(APP_URL + '#token=' + encodeURIComponent(token) + '&email=' + encodeURIComponent(email) + '&role=' + encodeURIComponent(user.role));
+  return redirectHtml_(loginRedirectUrl_(token, email, user.role, user.mustChangePassword));
 }
 
 function handleLogout_(e) {
   if (e.parameter.token) deleteSession_(e.parameter.token);
   return redirectHtml_(APP_URL);
+}
+
+function handleChangePassword_(e) {
+  const email = getSessionEmail_(e.parameter.token);
+  if (!email) {
+    return htmlMsg_('Your session has expired. Go back to the app and sign in again.');
+  }
+  const newPassword = e.parameter.newPassword || '';
+  if (newPassword.length < 6) {
+    return htmlMsg_('Password must be at least 6 characters. Go back and try again.');
+  }
+  const user = findUser_(email);
+  setUserPassword_(email, newPassword);
+  return redirectHtml_(loginRedirectUrl_(e.parameter.token, email, user.role, false));
+}
+
+function loginRedirectUrl_(token, email, role, mustChangePassword) {
+  return APP_URL + '#token=' + encodeURIComponent(token) +
+    '&email=' + encodeURIComponent(email) +
+    '&role=' + encodeURIComponent(role) +
+    '&mustChange=' + (mustChangePassword ? '1' : '0');
 }
 
 // ---------------- admin page ----------------
@@ -378,6 +426,7 @@ function renderAdminPage_(email, token, notice) {
   const rows = list.map((u) => {
     return (
       '<tr><td>' + escapeHtml_(u.email) + '</td><td>' + escapeHtml_(u.role) + '</td>' +
+      '<td>' + (u.mustChangePassword ? 'Must change password' : '') + '</td>' +
       '<td><form method="post" action="' + baseUrl + '" onsubmit="return confirm(\'Remove ' + escapeHtml_(u.email) + '?\')">' +
       '<input type="hidden" name="action" value="admin-remove" />' +
       '<input type="hidden" name="token" value="' + escapeHtml_(token) + '" />' +
@@ -398,8 +447,8 @@ function renderAdminPage_(email, token, notice) {
     '<h1>Manage document browser access</h1>' +
     '<p>Signed in as ' + escapeHtml_(email) + '.</p>' +
     (notice ? '<p class="notice">' + escapeHtml_(notice) + '</p>' : '') +
-    '<table><tr><th>Email</th><th>Role</th><th></th></tr>' + rows + '</table>' +
-    '<p>Add a user, or re-enter an existing email with a new password to reset it:</p>' +
+    '<table><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr>' + rows + '</table>' +
+    '<p>Add a user, or re-enter an existing email with a new password to reset it (they will be asked to set their own on next sign-in):</p>' +
     '<form class="add-form" method="post" action="' + baseUrl + '">' +
     '<input type="hidden" name="action" value="admin-add" />' +
     '<input type="hidden" name="token" value="' + escapeHtml_(token) + '" />' +

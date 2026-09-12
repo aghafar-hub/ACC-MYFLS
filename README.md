@@ -194,8 +194,10 @@ saving the file alone doesn't update the deployed URL's behavior.
 
 **Managing who has access**: sign into the app, open **Settings** (gear
 icon) → **Manage users**. The very first login has to use one of the
-temp passwords logged in step 3 above; change it to something real via
-that same page (re-enter that email with a new password to reset it).
+temp passwords logged in step 3 above — whenever an admin sets or
+resets someone's password (including that first temp one), the app
+forces a "set a new password" screen immediately after that person's
+next successful sign-in, before they can use anything else.
 
 ### 3. Fill in `config.js`
 

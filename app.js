@@ -60,7 +60,12 @@
     const error = params.get('error');
     history.replaceState(null, '', location.pathname + location.search);
     if (token) {
-      setSession({ token, email: params.get('email') || '', role: params.get('role') || 'user' });
+      setSession({
+        token,
+        email: params.get('email') || '',
+        role: params.get('role') || 'user',
+        mustChange: params.get('mustChange') === '1',
+      });
       return { ok: true };
     }
     if (error) return { error };
@@ -76,6 +81,10 @@
     }
     if (!session || !session.token) {
       showLoginScreen();
+      return;
+    }
+    if (session.mustChange) {
+      showChangePasswordScreen(session);
       return;
     }
     await showApp(session);
@@ -104,13 +113,59 @@
 
   function showLoginScreen(errorMsg) {
     el('loginScreen').hidden = false;
+    el('changePasswordScreen').hidden = true;
     el('appRoot').hidden = true;
     if (errorMsg) showLoginError(errorMsg);
     wireLoginForm();
   }
 
+  function wireChangePasswordForm(session) {
+    const form = el('changePasswordForm');
+    form.action = CFG.APPS_SCRIPT_URL || '';
+    form.querySelector('input[name="token"]').value = session.token;
+
+    if (form.dataset.wired) return;
+    form.dataset.wired = '1';
+
+    form.addEventListener('submit', (e) => {
+      const box = el('changePasswordError');
+      box.hidden = true;
+      if (!CFG.APPS_SCRIPT_URL || CFG.APPS_SCRIPT_URL.startsWith('YOUR_')) {
+        e.preventDefault();
+        box.textContent = 'Sign-in is not configured yet (see README).';
+        box.hidden = false;
+        return;
+      }
+      const newPassword = el('newPasswordInput').value;
+      const confirmPassword = el('confirmPasswordInput').value;
+      if (newPassword !== confirmPassword) {
+        e.preventDefault();
+        box.textContent = "Passwords don't match.";
+        box.hidden = false;
+        return;
+      }
+      // otherwise: real form POST navigates to Apps Script, which
+      // updates the password and redirects back here with a fresh
+      // token (mustChange now cleared).
+    });
+
+    el('changePasswordSignOut').addEventListener('click', (e) => {
+      e.preventDefault();
+      clearSession();
+      location.reload();
+    });
+  }
+
+  function showChangePasswordScreen(session) {
+    el('loginScreen').hidden = true;
+    el('appRoot').hidden = true;
+    el('changePasswordScreen').hidden = false;
+    wireChangePasswordForm(session);
+  }
+
   async function showApp(session) {
     el('loginScreen').hidden = true;
+    el('changePasswordScreen').hidden = true;
     el('appRoot').hidden = false;
     el('userEmail').textContent = session.email;
     el('adminSection').hidden = session.role !== 'admin';

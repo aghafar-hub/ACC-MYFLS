@@ -48,6 +48,30 @@
     </div>
   </div>
 
+  <div id="changePasswordScreen" class="login-screen" hidden>
+    <div class="login-card">
+      <div class="login-logos">
+        <img src="acc-logo.png" alt="Arabian Cement Company" class="brand-logo acc-logo" onerror="this.hidden=true" />
+        <img src="fls-logo.png" alt="FLSmidth" class="brand-logo fls-logo" />
+      </div>
+      <h1>Set a new password</h1>
+      <p class="login-hint" style="margin: 0 0 14px;">You're signed in with a temporary password. Choose a new one to continue.</p>
+      <p id="changePasswordError" class="login-error" hidden></p>
+      <form id="changePasswordForm" method="post">
+        <input type="hidden" name="action" value="change-password" />
+        <input type="hidden" name="token" />
+        <label>New password
+          <input type="password" name="newPassword" id="newPasswordInput" required minlength="6" autocomplete="new-password" />
+        </label>
+        <label>Confirm new password
+          <input type="password" id="confirmPasswordInput" required minlength="6" autocomplete="new-password" />
+        </label>
+        <button type="submit" class="btn primary">Set password</button>
+      </form>
+      <p class="login-hint"><a href="#" id="changePasswordSignOut">Sign out instead</a></p>
+    </div>
+  </div>
+
   <div id="appRoot" hidden>
     <header class="topbar">
       <div class="brand">
