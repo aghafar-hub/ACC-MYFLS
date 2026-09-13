@@ -36,6 +36,31 @@ const BOOTSTRAP_ADMIN_EMAILS = ['aghafar@arabiancementcompany.com'];
 const SESSION_TTL_HOURS = 12;
 const HASH_ITERATIONS = 10000;
 
+// Sheets/Drive calls occasionally throw a transient "You do not have
+// permission to access the requested document" even with correct,
+// unchanged sharing settings - this is a known Apps Script flake, most
+// common right after publishing a new deployment version while its
+// execution context is still propagating. A short retry clears it up
+// without making the user re-submit the login form.
+function withRetry_(fn, attempts) {
+  var lastErr;
+  for (var i = 0; i < (attempts || 3); i++) {
+    try {
+      return fn();
+    } catch (err) {
+      lastErr = err;
+      Utilities.sleep(300 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
+function openSettingsSpreadsheet_() {
+  return withRetry_(function () {
+    return SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+  });
+}
+
 // ---------------- one-time setup / migration ----------------
 // Run ONE of these once from the Apps Script editor (select it in the
 // function dropdown, click Run), then copy the id it logs into
@@ -182,7 +207,7 @@ function verifyPassword_(password, salt, expectedHash) {
 // ---------------- users sheet ----------------
 
 function getUsersSheet_() {
-  return SpreadsheetApp.openById(SETTINGS_SHEET_ID).getSheetByName('Users');
+  return openSettingsSpreadsheet_().getSheetByName('Users');
 }
 
 function getUserList_() {
@@ -246,7 +271,7 @@ function removeUser_(email) {
 // ---------------- sessions ----------------
 
 function getSessionsSheet_() {
-  return SpreadsheetApp.openById(SETTINGS_SHEET_ID).getSheetByName('Sessions');
+  return openSettingsSpreadsheet_().getSheetByName('Sessions');
 }
 
 function createSession_(email) {
@@ -254,7 +279,9 @@ function createSession_(email) {
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_TTL_HOURS * 3600 * 1000);
-  sheet.appendRow([token, email, now.toISOString(), expires.toISOString()]);
+  withRetry_(function () {
+    sheet.appendRow([token, email, now.toISOString(), expires.toISOString()]);
+  });
   return token;
 }
 
