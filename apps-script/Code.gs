@@ -1,9 +1,10 @@
 /**
- * Paste this into a new project at script.google.com, fill in
- * ROOT_FOLDER_ID, APP_URL and (after running setupSettingsSheet() or
- * migrateToPasswordAuth() once) SETTINGS_SHEET_ID below, then Deploy >
- * New deployment > type "Web app". See README.md for the full
- * walkthrough. No Google Cloud Console, no billing, no OAuth client.
+ * Paste this into a new project at script.google.com (ROOT_FOLDER_ID and
+ * APP_URL below are already set), run setupSettingsSheet() once - it
+ * creates your settings spreadsheet and saves its id as a Script
+ * Property automatically, so pasting in future updates never wipes it -
+ * then Deploy > New deployment > type "Web app". See README.md for the
+ * full walkthrough. No Google Cloud Console, no billing, no OAuth client.
  *
  * This version uses its own email+password login (not Google Sign-In):
  * passwords are hashed+salted (never stored in plain text) in a "Users"
@@ -20,10 +21,28 @@
 
 const ROOT_FOLDER_ID = '17OeueXcCpoAdjaZYP7xeDzIU99lejH0X';
 
-// Fill this in after running setupSettingsSheet() (fresh) or
-// migrateToPasswordAuth() (if you already had the old Google-identity
-// version's sheet) once - copy the id it logs.
-const SETTINGS_SHEET_ID = 'YOUR_SETTINGS_SHEET_ID';
+// The settings spreadsheet's id lives in Script Properties, NOT as a
+// constant here - on purpose. Code.gs gets replaced wholesale every time
+// you paste in an update from GitHub, and a hardcoded id would get wiped
+// back to a placeholder every single time, breaking login with a
+// confusing "You do not have permission to access the requested
+// document" exception. Script Properties survive code updates.
+//
+// Set it once: Apps Script editor -> Project Settings (gear icon, left
+// sidebar) -> Script Properties -> Add script property ->
+// name "SETTINGS_SHEET_ID", value = your settings spreadsheet's id
+// (the long id in its URL, or copy it from the Logger output the first
+// time you run setupSettingsSheet() / migrateToPasswordAuth() below).
+function getSettingsSheetId_() {
+  const id = PropertiesService.getScriptProperties().getProperty('SETTINGS_SHEET_ID');
+  if (!id) {
+    throw new Error(
+      'SETTINGS_SHEET_ID is not set. In the Apps Script editor, open Project Settings (gear icon) > ' +
+        'Script Properties, and add SETTINGS_SHEET_ID with your settings spreadsheet\'s id as the value.'
+    );
+  }
+  return id;
+}
 
 // The GitHub Pages URL this app is served from - used to redirect back
 // after a successful login.
@@ -57,14 +76,14 @@ function withRetry_(fn, attempts) {
 
 function openSettingsSpreadsheet_() {
   return withRetry_(function () {
-    return SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+    return SpreadsheetApp.openById(getSettingsSheetId_());
   });
 }
 
 // ---------------- one-time setup / migration ----------------
 // Run ONE of these once from the Apps Script editor (select it in the
-// function dropdown, click Run), then copy the id it logs into
-// SETTINGS_SHEET_ID above.
+// function dropdown, click Run) - both set the SETTINGS_SHEET_ID script
+// property for you automatically.
 
 // Use this for a brand-new settings sheet.
 function setupSettingsSheet() {
@@ -77,15 +96,18 @@ function setupSettingsSheet() {
   sessions.getRange(1, 1, 1, 4).setValues([['Token', 'Email', 'CreatedAt', 'ExpiresAt']]);
 
   seedBootstrapAdmins_(users);
-  Logger.log('Created settings sheet. Set SETTINGS_SHEET_ID to: ' + ss.getId());
+  PropertiesService.getScriptProperties().setProperty('SETTINGS_SHEET_ID', ss.getId());
+  Logger.log('Created settings sheet and saved its id as the SETTINGS_SHEET_ID script property: ' + ss.getId());
 }
 
 // Use this INSTEAD if you already ran the old version's setupSettingsSheet()
 // and have an existing sheet with an "AccessControl" tab (Email/Role/AddedAt,
 // no passwords) - it upgrades that sheet in place rather than creating a
-// second one. Safe to run more than once.
+// second one. Safe to run more than once. Set the SETTINGS_SHEET_ID script
+// property (Project Settings > Script Properties) to your existing settings
+// sheet's id before running this.
 function migrateToPasswordAuth() {
-  const ss = SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+  const ss = SpreadsheetApp.openById(getSettingsSheetId_());
   let users = ss.getSheetByName('AccessControl') || ss.getSheetByName('Users');
   if (!users) {
     users = ss.insertSheet('Users');
@@ -116,7 +138,8 @@ function migrateToPasswordAuth() {
   }
 
   seedBootstrapAdmins_(users);
-  Logger.log('Migration complete. SETTINGS_SHEET_ID: ' + ss.getId());
+  PropertiesService.getScriptProperties().setProperty('SETTINGS_SHEET_ID', ss.getId());
+  Logger.log('Migration complete.');
 }
 
 function seedBootstrapAdmins_(usersSheet) {
@@ -153,7 +176,7 @@ function setTempPassword_(sheet, row, email) {
 // link and no Apps Script round-trip. Safe to re-run after uploading
 // more files later - it replaces the whole tab each time.
 function exportDriveManifest() {
-  const ss = SpreadsheetApp.openById(SETTINGS_SHEET_ID);
+  const ss = openSettingsSpreadsheet_();
   const old = ss.getSheetByName('DriveManifest');
   if (old) ss.deleteSheet(old);
   const sheet = ss.insertSheet('DriveManifest');

@@ -107,8 +107,15 @@ it run.
      **Logs**) and copy the sheet id it printed, plus any **temp
      password** lines it logged for existing users (including the
      bootstrap admin) — you'll need those to log in the first time.
-4. Paste the sheet id into `SETTINGS_SHEET_ID` near the top of the
-   script.
+4. `setupSettingsSheet()`/`migrateToPasswordAuth()` save the sheet id
+   automatically as a **Script Property** — not as a constant in the
+   code — specifically so that pasting in a future update (step 2) never
+   wipes it out again. If login ever throws `Exception: You do not have
+   permission to access the requested document`, this is almost always
+   why: check Project Settings (gear icon, left sidebar) → **Script
+   Properties** → confirm `SETTINGS_SHEET_ID` is present and matches your
+   sheet's id (from its URL). Add or fix it there directly if needed —
+   no code change required.
 5. **Deploy → Manage deployments** (if you already had a deployment
    from before) → pencil/edit icon, or **Deploy → New deployment** if
    this is the first time → gear icon → **Web app**.
