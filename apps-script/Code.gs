@@ -323,10 +323,7 @@ function doGet(e) {
   }
 
   const url = files.next().getUrl();
-  return HtmlService.createHtmlOutput(
-    '<script>window.location.replace(' + JSON.stringify(url) + ');</script>' +
-    '<p>Opening ' + escapeHtml_(fileName) + '... <a href="' + url + '">Click here</a> if you are not redirected.</p>'
-  );
+  return redirectHtml_(url, 'Opening ' + escapeHtml_(fileName) + '&hellip;');
 }
 
 function doPost(e) {
@@ -454,7 +451,7 @@ function renderAdminPage_(email, token, notice) {
     'td button{background:transparent;color:var(--accent);font-weight:400;padding:2px 4px;}' +
     '.notice{background:var(--panel);border:1px solid var(--border);padding:9px 12px;border-radius:6px;margin:12px 0;font-size:13px;}' +
     '</style></head><body>' +
-    '<a class="back" href="' + APP_URL + '">&larr; Back to MyFLS Document Browser</a>' +
+    '<a class="back" href="' + APP_URL + '" target="_top">&larr; Back to MyFLS Document Browser</a>' +
     '<h1>Manage access</h1>' +
     '<p class="sub">Signed in as ' + escapeHtml_(email) + '</p>' +
     (notice ? '<p class="notice">' + escapeHtml_(notice) + '</p>' : '') +
@@ -475,8 +472,26 @@ function renderAdminPage_(email, token, notice) {
 
 // ---------------- helpers ----------------
 
-function redirectHtml_(url) {
-  return HtmlService.createHtmlOutput('<script>window.location.replace(' + JSON.stringify(url) + ');</script>');
+// Apps Script's HtmlService can render inside Google's own sandboxed
+// iframe, where a plain window.location.replace() sometimes silently
+// fails to navigate the real browser tab. window.top targets the actual
+// outermost tab instead of the iframe, and the visible fallback link
+// (target="_top") guarantees a way through even if the automatic
+// redirect doesn't fire at all.
+function redirectHtml_(url, message) {
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+    '<body style="font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;background:#0a1628;color:#e8f4fd;' +
+    'text-align:center;padding-top:20vh;margin:0;">' +
+    '<p>' + (message || 'Redirecting&hellip;') + '</p>' +
+    '<p><a href="' + url + '" target="_top" style="color:#00b4d8;">Click here if you are not redirected automatically</a></p>' +
+    '<script>' +
+    'try { (window.top || window).location.replace(' + JSON.stringify(url) + '); } catch (e) {' +
+    '  try { window.location.href = ' + JSON.stringify(url) + '; } catch (e2) {}' +
+    '}' +
+    '</script>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html);
 }
 
 function htmlMsg_(text) {
@@ -487,7 +502,7 @@ function htmlMsg_(text) {
     'a{color:#00b4d8;text-decoration:none;} a:hover{text-decoration:underline;}' +
     'p{font-size:14px;line-height:1.5;}</style></head><body>' +
     '<p>' + escapeHtml_(text) + '</p>' +
-    '<p><a href="' + APP_URL + '">&larr; Back to MyFLS Document Browser</a></p>' +
+    '<p><a href="' + APP_URL + '" target="_top">&larr; Back to MyFLS Document Browser</a></p>' +
     '</body></html>';
   return HtmlService.createHtmlOutput(html);
 }
