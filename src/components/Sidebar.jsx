@@ -111,7 +111,7 @@ function SourceRow({
 
   const handleToggle = (e) => {
     e.stopPropagation();
-    if (!expanded) onLoadSource(source.id);
+    if (!expanded) onLoadSource(source.id).catch(() => {});
     onToggleExpand(rowKey);
   };
 

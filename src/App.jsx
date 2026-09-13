@@ -69,8 +69,10 @@ export default function App() {
 
   useEffect(() => {
     if (authState.view !== "app") return;
-    fetchSourcesList().then(setSources);
-  }, [authState.view]);
+    fetchSourcesList()
+      .then(setSources)
+      .catch(() => showToast("Couldn't load the plants/projects list. Check your connection and reload."));
+  }, [authState.view, showToast]);
 
   const catalog = useMemo(() => (sources ? buildCatalog(sources) : null), [sources]);
 
@@ -94,10 +96,17 @@ export default function App() {
           sourceDataRef.current = next;
           return next;
         });
-        delete inFlightRef.current[id];
         return data;
       })();
       inFlightRef.current[id] = promise;
+      // Always clear the in-flight slot, success or failure — otherwise a
+      // single failed fetch (e.g. a transient network blip) permanently
+      // "poisons" this source: every future attempt to open it would just
+      // return the same rejected promise forever, with no way to retry
+      // short of a full page reload.
+      promise.finally(() => {
+        delete inFlightRef.current[id];
+      });
       return promise;
     },
     [sources]
@@ -127,12 +136,18 @@ export default function App() {
 
   const activateSource = useCallback(
     async (id) => {
-      const data = await loadSource(id);
+      let data;
+      try {
+        data = await loadSource(id);
+      } catch {
+        showToast("Couldn't load that source. Check your connection and try again.");
+        return;
+      }
       setActiveSourceId(id);
       resetViewState();
       setSelection(data.kind === "rich" ? { mode: "wholeSource" } : { mode: "plainFolder", path: data.root.name });
     },
-    [loadSource]
+    [loadSource, showToast]
   );
 
   const selectRichNode = useCallback((sourceId, key) => {
