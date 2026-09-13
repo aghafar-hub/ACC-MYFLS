@@ -38,9 +38,15 @@ export default function SettingsPanel({ session, onClose, onSignOut }) {
           <section className="settings-section">
             <h3>Admin</h3>
             <p>Add, remove, or reset passwords for people who can use this app.</p>
-            <a className="btn" href={adminPanelUrl(session.token)} target="_blank" rel="noopener noreferrer">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                window.location.href = adminPanelUrl(session.token);
+              }}
+            >
               Manage users
-            </a>
+            </button>
           </section>
         )}
 

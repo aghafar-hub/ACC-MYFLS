@@ -2,15 +2,17 @@ export default function TopBar({ session, searchTerm, onSearchChange, authNotice
   return (
     <header className="topbar">
       <div className="brand">
-        <img
-          src={`${import.meta.env.BASE_URL}acc-logo.png`}
-          alt="Arabian Cement Company"
-          className="brand-logo acc-logo"
-          onError={(e) => {
-            e.currentTarget.hidden = true;
-          }}
-        />
-        <img src={`${import.meta.env.BASE_URL}fls-logo.png`} alt="FLSmidth" className="brand-logo fls-logo" />
+        <div className="brand-logos">
+          <img
+            src={`${import.meta.env.BASE_URL}acc-logo.png`}
+            alt="Arabian Cement Company"
+            className="brand-logo acc-logo"
+            onError={(e) => {
+              e.currentTarget.hidden = true;
+            }}
+          />
+          <img src={`${import.meta.env.BASE_URL}fls-logo.png`} alt="FLSmidth" className="brand-logo fls-logo" />
+        </div>
         <span className="brand-text">Document Browser</span>
       </div>
       <div className="search">

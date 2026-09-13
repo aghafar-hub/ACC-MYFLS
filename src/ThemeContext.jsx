@@ -6,9 +6,9 @@ const ThemeContext = createContext(null);
 export function ThemeProvider({ children }) {
   const [themeId, setThemeId] = useState(() => {
     try {
-      return localStorage.getItem(THEME_KEY) || "ocean-light";
+      return localStorage.getItem(THEME_KEY) || "navy-dark";
     } catch {
-      return "ocean-light";
+      return "navy-dark";
     }
   });
 

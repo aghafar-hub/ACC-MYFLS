@@ -436,19 +436,30 @@ function renderAdminPage_(email, token, notice) {
   }).join('');
 
   const html =
-    '<!doctype html><html><head><meta charset="utf-8"><title>Manage Access</title><style>' +
-    'body{font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#1c2733;}' +
-    'h1{font-size:18px;} table{width:100%;border-collapse:collapse;margin:16px 0;}' +
-    'th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-size:14px;}' +
-    'form.add-form{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}' +
-    'input,select,button{padding:7px;font-size:14px;} button{cursor:pointer;}' +
-    '.notice{background:#eaf2fa;padding:8px 12px;border-radius:4px;margin:12px 0;}' +
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Manage Access &mdash; MyFLS</title><style>' +
+    ':root{--bg:#0a1628;--panel:#0d1e35;--border:#1e3a5f;--text:#e8f4fd;--muted:#6b8cae;--accent:#00b4d8;--accent-text:#0a1628;}' +
+    'body{font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:32px 16px 64px;' +
+    'color:var(--text);background:var(--bg);}' +
+    'a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}' +
+    '.back{display:inline-block;margin-bottom:20px;font-size:13px;}' +
+    'h1{font-size:19px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin:0 0 20px;}' +
+    'table{width:100%;border-collapse:collapse;margin:16px 0;background:var(--panel);border-radius:8px;overflow:hidden;}' +
+    'th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;}' +
+    'th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.03em;}' +
+    'tr:last-child td{border-bottom:none;}' +
+    'form.add-form{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center;}' +
+    'input,select{padding:8px 10px;font-size:13px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;}' +
+    'button{padding:8px 14px;font-size:13px;cursor:pointer;background:var(--accent);color:var(--accent-text);border:none;border-radius:4px;font-weight:600;}' +
+    'td button{background:transparent;color:var(--accent);font-weight:400;padding:2px 4px;}' +
+    '.notice{background:var(--panel);border:1px solid var(--border);padding:9px 12px;border-radius:6px;margin:12px 0;font-size:13px;}' +
     '</style></head><body>' +
-    '<h1>Manage document browser access</h1>' +
-    '<p>Signed in as ' + escapeHtml_(email) + '.</p>' +
+    '<a class="back" href="' + APP_URL + '">&larr; Back to MyFLS Document Browser</a>' +
+    '<h1>Manage access</h1>' +
+    '<p class="sub">Signed in as ' + escapeHtml_(email) + '</p>' +
     (notice ? '<p class="notice">' + escapeHtml_(notice) + '</p>' : '') +
     '<table><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr>' + rows + '</table>' +
-    '<p>Add a user, or re-enter an existing email with a new password to reset it (they will be asked to set their own on next sign-in):</p>' +
+    '<p class="sub">Add a user, or re-enter an existing email with a new password to reset it (they will be asked to set their own on next sign-in):</p>' +
     '<form class="add-form" method="post" action="' + baseUrl + '">' +
     '<input type="hidden" name="action" value="admin-add" />' +
     '<input type="hidden" name="token" value="' + escapeHtml_(token) + '" />' +
@@ -469,7 +480,16 @@ function redirectHtml_(url) {
 }
 
 function htmlMsg_(text) {
-  return HtmlService.createHtmlOutput('<p style="font-family:Arial,Helvetica,sans-serif">' + escapeHtml_(text) + '</p>');
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<style>body{font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;max-width:440px;margin:15vh auto 0;' +
+    'padding:0 20px;color:#e8f4fd;background:#0a1628;text-align:center;}' +
+    'a{color:#00b4d8;text-decoration:none;} a:hover{text-decoration:underline;}' +
+    'p{font-size:14px;line-height:1.5;}</style></head><body>' +
+    '<p>' + escapeHtml_(text) + '</p>' +
+    '<p><a href="' + APP_URL + '">&larr; Back to MyFLS Document Browser</a></p>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html);
 }
 
 function escapeHtml_(s) {
