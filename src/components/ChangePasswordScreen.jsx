@@ -17,9 +17,8 @@ export default function ChangePasswordScreen({ session }) {
       setError("Passwords don't match.");
       return;
     }
-    // otherwise: real form POST navigates to Apps Script, which updates
-    // the password and redirects back here with a fresh token (mustChange
-    // now cleared).
+    // otherwise: the POST opens in a named popup (target="myfls_auth"),
+    // same handoff as the login form — see LoginScreen.jsx for why.
   };
 
   const handleSignOut = (e) => {
@@ -47,7 +46,7 @@ export default function ChangePasswordScreen({ session }) {
           You're signed in with a temporary password. Choose a new one to continue.
         </p>
         {error && <p className="login-error">{error}</p>}
-        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} onSubmit={handleSubmit}>
+        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth" onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="change-password" />
           <input type="hidden" name="token" value={session.token} />
           <label>

@@ -439,7 +439,8 @@ function renderAdminPage_(email, token, notice) {
     'body{font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:32px 16px 64px;' +
     'color:var(--text);background:var(--bg);}' +
     'a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}' +
-    '.back{display:inline-block;margin-bottom:20px;font-size:13px;}' +
+    '.back{display:inline-block;margin-bottom:20px;font-size:13px;background:none;border:none;' +
+    'color:var(--accent);cursor:pointer;padding:0;font-family:inherit;}' +
     'h1{font-size:19px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin:0 0 20px;}' +
     'table{width:100%;border-collapse:collapse;margin:16px 0;background:var(--panel);border-radius:8px;overflow:hidden;}' +
     'th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;}' +
@@ -451,7 +452,7 @@ function renderAdminPage_(email, token, notice) {
     'td button{background:transparent;color:var(--accent);font-weight:400;padding:2px 4px;}' +
     '.notice{background:var(--panel);border:1px solid var(--border);padding:9px 12px;border-radius:6px;margin:12px 0;font-size:13px;}' +
     '</style></head><body>' +
-    '<a class="back" href="' + APP_URL + '" target="_top">&larr; Back to MyFLS Document Browser</a>' +
+    '<button class="back" type="button" onclick="window.close()">&larr; Close this tab</button>' +
     '<h1>Manage access</h1>' +
     '<p class="sub">Signed in as ' + escapeHtml_(email) + '</p>' +
     (notice ? '<p class="notice">' + escapeHtml_(notice) + '</p>' : '') +
@@ -472,23 +473,44 @@ function renderAdminPage_(email, token, notice) {
 
 // ---------------- helpers ----------------
 
-// Apps Script's HtmlService can render inside Google's own sandboxed
-// iframe, where a plain window.location.replace() sometimes silently
-// fails to navigate the real browser tab. window.top targets the actual
-// outermost tab instead of the iframe, and the visible fallback link
-// (target="_top") guarantees a way through even if the automatic
-// redirect doesn't fire at all.
+// Apps Script's HtmlService always renders inside Google's own sandboxed
+// iframe (even for a "direct" visit to the /exec URL) — its sandbox
+// permissions do not include cross-origin top navigation, so a
+// script-driven window.top.location.replace() to a different origin (our
+// GitHub Pages app) is silently blocked. A same-frame location.href
+// fallback doesn't help either: it just loads the destination *inside*
+// that same iframe, trapping the user under the script.google.com address
+// forever with our real app rendered one level too deep. The reliable fix
+// is the classic OAuth-popup pattern: the login/change-password forms in
+// the React app open their POST in a named popup window (see
+// LoginScreen.jsx / ChangePasswordScreen.jsx), which gives this response
+// a `window.opener` handle back to the *real* tab. Navigating window.opener
+// (always permitted cross-origin — you can always redirect a window you
+// have a handle to) and then closing this popup gets the user back to
+// github.io reliably, with no iframe involved at all. The visible button
+// is a guaranteed manual fallback for the rare case this is opened with no
+// opener (e.g. a bookmarked link).
 function redirectHtml_(url, message) {
   const html =
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
     '<body style="font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;background:#0a1628;color:#e8f4fd;' +
     'text-align:center;padding-top:20vh;margin:0;">' +
     '<p>' + (message || 'Redirecting&hellip;') + '</p>' +
-    '<p><a href="' + url + '" target="_top" style="color:#00b4d8;">Click here if you are not redirected automatically</a></p>' +
+    '<p><a href="' + url + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:10px 22px;' +
+    'background:#00b4d8;color:#0a1628;font-weight:600;text-decoration:none;border-radius:6px;">Continue to MyFLS &rarr;</a></p>' +
     '<script>' +
-    'try { (window.top || window).location.replace(' + JSON.stringify(url) + '); } catch (e) {' +
-    '  try { window.location.href = ' + JSON.stringify(url) + '; } catch (e2) {}' +
-    '}' +
+    '(function () {' +
+    '  var url = ' + JSON.stringify(url) + ';' +
+    '  try {' +
+    '    if (window.opener && !window.opener.closed) {' +
+    '      window.opener.location = url;' +
+    '      if (window.opener.focus) window.opener.focus();' +
+    '      window.close();' +
+    '      return;' +
+    '    }' +
+    '  } catch (e) {}' +
+    '  try { (window.top || window).location.replace(url); } catch (e2) {}' +
+    '})();' +
     '</script>' +
     '</body></html>';
   return HtmlService.createHtmlOutput(html);
@@ -500,9 +522,12 @@ function htmlMsg_(text) {
     '<style>body{font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;max-width:440px;margin:15vh auto 0;' +
     'padding:0 20px;color:#e8f4fd;background:#0a1628;text-align:center;}' +
     'a{color:#00b4d8;text-decoration:none;} a:hover{text-decoration:underline;}' +
-    'p{font-size:14px;line-height:1.5;}</style></head><body>' +
+    'p{font-size:14px;line-height:1.5;}' +
+    'button{margin-top:4px;padding:9px 18px;background:#00b4d8;color:#0a1628;font-weight:600;border:none;' +
+    'border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit;}</style></head><body>' +
     '<p>' + escapeHtml_(text) + '</p>' +
-    '<p><a href="' + APP_URL + '" target="_top">&larr; Back to MyFLS Document Browser</a></p>' +
+    '<p><button type="button" onclick="window.close()">Close this tab</button></p>' +
+    '<p><a href="' + APP_URL + '" target="_blank" rel="noopener">Open MyFLS Document Browser in a new tab</a></p>' +
     '</body></html>';
   return HtmlService.createHtmlOutput(html);
 }

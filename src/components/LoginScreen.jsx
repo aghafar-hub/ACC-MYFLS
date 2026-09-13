@@ -9,8 +9,12 @@ export default function LoginScreen({ errorMsg }) {
       e.preventDefault();
       setError("Sign-in is not configured yet (see README).");
     }
-    // otherwise: real form POST navigates to Apps Script, which redirects
-    // back here with a token (or an error) on the URL hash.
+    // otherwise: the POST opens in a named popup (target="myfls_auth") so
+    // this tab never leaves github.io — Apps Script's response then writes
+    // the token (or an error) onto this tab's URL hash via window.opener
+    // and closes itself. Apps Script's own sandboxed iframe blocks a plain
+    // same-tab redirect back to a different origin, so this popup+opener
+    // handoff is the reliable way out.
   };
 
   return (
@@ -29,7 +33,7 @@ export default function LoginScreen({ errorMsg }) {
         </div>
         <h1>MyFLS Document Browser</h1>
         {error && <p className="login-error">{error}</p>}
-        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} onSubmit={handleSubmit}>
+        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth" onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="login" />
           <label>
             Email

@@ -42,7 +42,7 @@ export default function SettingsPanel({ session, onClose, onSignOut }) {
               type="button"
               className="btn"
               onClick={() => {
-                window.location.href = adminPanelUrl(session.token);
+                window.open(adminPanelUrl(session.token), "myfls_admin");
               }}
             >
               Manage users
