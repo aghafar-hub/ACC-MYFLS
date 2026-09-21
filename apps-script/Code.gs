@@ -650,7 +650,11 @@ function redirectHtml_(url, message, linkLabel) {
 // payload (a URL hash fragment, same shape as the old redirect-based
 // flow) to its own session state.
 function postMessageHtml_(hash) {
-  const targetOrigin = new URL(APP_URL).origin;
+  // Apps Script's server-side V8 runtime has no URL constructor (unlike a
+  // browser or Node), so this has to be plain string surgery instead of
+  // new URL(APP_URL).origin - APP_URL always looks like
+  // "https://host/path/", and the origin is just its first two segments.
+  const targetOrigin = APP_URL.split('/').slice(0, 3).join('/');
   const html =
     '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
     '<script>' +
