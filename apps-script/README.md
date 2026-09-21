@@ -1,7 +1,7 @@
 # Apps Script backend
 
-`Code.gs` is the backend: it handles email+password login, sessions,
-the admin user-management page, and resolving/opening a document from
+`Code.gs` is the backend: it resolves the visitor's Google identity for
+sign-in, serves the admin page, and resolves/opens a document from
 Drive when there's no direct link baked in yet (see the main
 [README](../README.md#4-make-documents-open-instantly-direct-drive-links)).
 
@@ -13,28 +13,27 @@ this file and what's pasted into script.google.com in sync manually.
 
 ## Access control
 
-The app has its own **email + password login screen** — not Google
-Sign-In. Accounts (email, a salted+hashed password, and a role) live in
-a **Google Sheet** (the "settings database"); signing in gets you a
-random session token, stored in the browser, that identifies you on
-every later request.
+Sign-in uses the visitor's existing **Google Workspace identity**
+(`Session.getActiveUser()`), not a separate password system — anyone
+signed into an `@arabiancementcompany.com` Google account can open the
+app with no signup step. This requires the deployment to require
+authentication (see step 5 below); Apps Script only resolves a real
+identity when the platform made the visitor sign in to reach it at all.
 
-**Worth knowing plainly**: this is a real security trade-off versus
-Google Sign-In. We're responsible for password storage and session
-handling ourselves, in a platform (Apps Script) that has no
-bcrypt/scrypt/Argon2 built in — `Code.gs` stretches SHA-256 10,000
-times per password as a reasonable best effort, but that's still weaker
-than what Google provides for free, and there's no 2FA, no
-breach-detection, no password-reset-by-email flow yet. It was chosen
-deliberately so people without a Google account can still get in; treat
-the account list as sensitive and keep it small.
+The "Users" sheet (in the same settings spreadsheet as before) is
+**not** an access allowlist — domain membership is. It only ever holds
+`Email` + `Role`, and only controls who additionally gets **admin**
+access: from the app's **Settings** panel (gear icon, top right), an
+admin gets a "Manage admins" button that opens a page to promote or
+demote anyone by email — no spreadsheet editing required.
+`aghafar@arabiancementcompany.com` is hardcoded as a permanent bootstrap
+admin in `Code.gs` — a safety net so the app can never end up with no
+admin able to get back in.
 
-One or more people are **admins**: from the app's **Settings** panel
-(gear icon, top right) they get a "Manage users" button that opens a
-page to add, remove, or reset the password for anyone — no spreadsheet
-editing required. `aghafar@arabiancementcompany.com` is hardcoded as a
-permanent bootstrap admin in `Code.gs` — a safety net so the app can
-never end up with no admin able to get back in.
+If you're picking this project back up and it still has the older
+email+password version's settings sheet (password/session columns), run
+`migrateToGoogleIdentity()` once (see step 3) to drop those columns —
+there's nothing left that needs them.
 
 ## One-time setup
 
@@ -98,15 +97,13 @@ it run.
 3. **Create/upgrade the settings sheet** — pick whichever applies:
    - **Never ran a setup function before**: select `setupSettingsSheet`
      in the function dropdown, click **Run**.
-   - **Already ran the old `setupSettingsSheet()`** (an `AccessControl`
-     sheet with just Email/Role/AddedAt already exists): select
-     `migrateToPasswordAuth` instead, click **Run**. This upgrades that
-     same sheet in place rather than creating a second one.
+   - **Already have a settings sheet from an earlier version of this
+     app** (either the very first Google-identity version, or the later
+     email+password one): select `migrateToGoogleIdentity` instead,
+     click **Run**. This upgrades that same sheet in place (dropping any
+     password columns) rather than creating a second one.
    - Either way, the first run asks you to authorize the script (Sheets
-     access) — approve it, then open **View → Executions** (or
-     **Logs**) and copy the sheet id it printed, plus any **temp
-     password** lines it logged for existing users (including the
-     bootstrap admin) — you'll need those to log in the first time.
+     access) — approve it.
 4. `setupSettingsSheet()`/`migrateToPasswordAuth()` save the sheet id
    automatically as a **Script Property** — not as a constant in the
    code — specifically so that pasting in a future update (step 2) never
@@ -119,10 +116,14 @@ it run.
 5. **Deploy → Manage deployments** (if you already had a deployment
    from before) → pencil/edit icon, or **Deploy → New deployment** if
    this is the first time → gear icon → **Web app**.
-   - Execute as: **Me**.
-   - Who has access: **Anyone** — this app doesn't rely on Google
-     identity at all, so visitors don't need a Google account either;
-     the email+password check inside the script is the real gate.
+   - Execute as: **User accessing the web app** — this is required for
+     `Session.getActiveUser()` to resolve a real identity at all; with
+     "Execute as: Me" it always comes back blank.
+   - Who has access: **Anyone within arabiancementcompany.com** — NOT
+     plain "Anyone": a public deployment never makes the visitor
+     authenticate, so there'd be no identity to resolve either. Requiring
+     the domain is what makes sign-in work with zero extra setup for
+     everyone who already has a Workspace account.
    - Version: **New version** if editing an existing deployment.
    - Deploy. Approve any additional authorization prompts.
 6. Copy the **Web app URL** (ends in `/exec`) if this is a first-time
@@ -135,12 +136,9 @@ alone does not update the deployed URL's behavior. This is the #1
 source of "I fixed it but it's still broken" confusion with this
 backend — always double check you redeployed.
 
-**Managing who has access**: sign into the app, open **Settings** (gear
-icon) → **Manage users**. The very first login has to use one of the
-temp passwords logged in step 3 above — whenever an admin sets or
-resets someone's password (including that first temp one), the app
-forces a "set a new password" screen immediately after that person's
-next successful sign-in, before they can use anything else.
+**Managing admins**: sign into the app, open **Settings** (gear icon) →
+**Manage admins**. Anyone else in the domain can already sign in and use
+the app with no action needed from you at all.
 
 ### 3. Fill in `src/config.js`
 

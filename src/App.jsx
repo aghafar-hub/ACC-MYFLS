@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlainFolderTree, fetchRichDocs, fetchRichTree, fetchSourcesList, openDocument } from "./api";
-import { APP_CONFIG, clearSession, getSession, isAppsScriptConfigured, setSession } from "./config";
+import { APP_CONFIG, clearIdentity, getIdentity, isAppsScriptConfigured, setIdentity } from "./config";
 import { ancestorChain, buildCatalog, buildDocsByNode, collectDescendantDocs, collectDescendantDocsMulti, indexPlainTree } from "./domain";
 
 import LoginScreen from "./components/LoginScreen";
-import ChangePasswordScreen from "./components/ChangePasswordScreen";
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import DocumentTable from "./components/DocumentTable";
@@ -13,40 +12,24 @@ import Toast from "./components/Toast";
 
 const PAGE_SIZE = 100;
 
-// The Apps Script login/change-password handlers report back a hash
-// fragment shaped like a URL's - "token=...&email=..." or "error=..." -
-// but it's never actually put in the address bar (never sent to any
-// server, unlike a query string): it arrives via postMessage from a
-// hidden <iframe> the login/change-password forms submit into (see
-// LoginScreen.jsx / ChangePasswordScreen.jsx and the message listener
-// below), so this just needs to parse the string, not touch the URL.
+// Sign-in is a Google identity check (Session.getActiveUser() in
+// Code.gs), not a password - Apps Script reports back who's signed in as
+// a hash-fragment-shaped string, "email=...&role=..." or "error=...".
+// It's never actually put in the address bar: it arrives via postMessage
+// from the small popup LoginScreen.jsx opens (see the message listener
+// below), so this just needs to parse the string.
 function parseAuthHash(hash) {
   if (!hash) return null;
   const params = new URLSearchParams(hash);
-  const token = params.get("token");
+  const email = params.get("email");
   const error = params.get("error");
-  if (token) {
-    const session = {
-      token,
-      email: params.get("email") || "",
-      role: params.get("role") || "user",
-      mustChange: params.get("mustChange") === "1",
-    };
-    setSession(session);
-    return { session };
+  if (email) {
+    const identity = { email, role: params.get("role") || "user" };
+    setIdentity(identity);
+    return { identity };
   }
   if (error) return { error };
   return null;
-}
-
-// Back-compat for a directly-loaded URL that still has an old-style hash
-// (a stale bookmark, or the tab reloading mid-flow) - reads it once at
-// startup, applies it the same way, then scrubs the URL.
-function consumeLoginHash() {
-  if (!window.location.hash) return null;
-  const result = parseAuthHash(window.location.hash.slice(1));
-  window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  return result;
 }
 
 const APPS_SCRIPT_ORIGIN = (() => {
@@ -59,12 +42,8 @@ const APPS_SCRIPT_ORIGIN = (() => {
 
 export default function App() {
   const [authState, setAuthState] = useState(() => {
-    const hashResult = consumeLoginHash();
-    if (hashResult?.error) return { view: "login", error: hashResult.error };
-    const session = hashResult?.session || getSession();
-    if (!session?.token) return { view: "login" };
-    if (session.mustChange) return { view: "changePassword", session };
-    return { view: "app", session };
+    const identity = getIdentity();
+    return identity ? { view: "app", session: identity } : { view: "login" };
   });
 
   const [sources, setSources] = useState(null);
@@ -95,9 +74,8 @@ export default function App() {
     setSidebarOpen(false);
   }, [activeSourceId, selection]);
 
-  // Login and change-password results arrive here via postMessage from
-  // the small popup those forms submit into (see LoginScreen.jsx /
-  // ChangePasswordScreen.jsx and postMessageHtml_ in Code.gs) rather than
+  // Sign-in results arrive here via postMessage from the small popup
+  // LoginScreen.jsx opens (see postMessageHtml_ in Code.gs) rather than
   // by this tab reloading with a new URL hash - the popup posts the
   // result back and closes itself, so this tab never navigates anywhere
   // during sign-in.
@@ -106,15 +84,12 @@ export default function App() {
       if (APPS_SCRIPT_ORIGIN && event.origin !== APPS_SCRIPT_ORIGIN) return;
       if (!event.data || event.data.source !== "myfls-auth") return;
       const result = parseAuthHash(event.data.hash);
-      if (result?.session) {
-        setAuthState(
-          result.session.mustChange ? { view: "changePassword", session: result.session } : { view: "app", session: result.session }
-        );
+      if (result?.identity) {
+        setAuthState({ view: "app", session: result.identity });
       } else if (result?.error) {
-        // errorSeq always changes even if the error text repeats (e.g.
-        // the same wrong password twice in a row) - LoginScreen /
-        // ChangePasswordScreen key off it to reliably clear their
-        // "submitting" state each time, not just when the text differs.
+        // errorSeq always changes even if the error text repeats -
+        // LoginScreen keys off it to reliably clear its "Signing in…"
+        // state each time, not just when the text differs.
         setAuthState((prev) => ({ ...prev, error: result.error, errorSeq: (prev.errorSeq || 0) + 1 }));
       }
     }
@@ -343,15 +318,12 @@ export default function App() {
   };
 
   const handleSignOut = () => {
-    clearSession();
+    clearIdentity();
     setAuthState({ view: "login" });
   };
 
   if (authState.view === "login") {
     return <LoginScreen errorMsg={authState.error} errorSeq={authState.errorSeq} />;
-  }
-  if (authState.view === "changePassword") {
-    return <ChangePasswordScreen session={authState.session} errorMsg={authState.error} errorSeq={authState.errorSeq} />;
   }
 
   return (

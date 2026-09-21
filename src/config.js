@@ -9,23 +9,33 @@ export function isAppsScriptConfigured() {
   return Boolean(APP_CONFIG.APPS_SCRIPT_URL) && !APP_CONFIG.APPS_SCRIPT_URL.startsWith("YOUR_");
 }
 
-const SESSION_KEY = "myfls_session";
+const IDENTITY_KEY = "myfls_identity";
 export const THEME_KEY = "myfls_theme";
 
-export function getSession() {
+// Signing in is a Google Workspace identity check (Session.getActiveUser()
+// in Code.gs), not a password - there's no server-side session token to
+// track at all. The result is just cached here so most visits skip the
+// sign-in popup entirely; it's re-verified after this long in case
+// Workspace access or an admin role changed in the meantime.
+const IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export function getIdentity() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    const cached = JSON.parse(localStorage.getItem(IDENTITY_KEY) || "null");
+    if (!cached?.email || !cached.verifiedAt) return null;
+    if (Date.now() - cached.verifiedAt > IDENTITY_TTL_MS) return null;
+    return cached;
   } catch {
     return null;
   }
 }
 
-export function setSession(session) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export function setIdentity(identity) {
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify({ ...identity, verifiedAt: Date.now() }));
 }
 
-export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+export function clearIdentity() {
+  localStorage.removeItem(IDENTITY_KEY);
 }
 
 // Same 10 themes (names + colors) as acc-oil-analysis-app / ACC-Vibration-

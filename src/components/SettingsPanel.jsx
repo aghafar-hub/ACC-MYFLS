@@ -37,15 +37,17 @@ export default function SettingsPanel({ session, onClose, onSignOut }) {
         {session.role === "admin" && (
           <section className="settings-section">
             <h3>Admin</h3>
-            <p>Add, remove, or reset passwords for people who can use this app.</p>
+            <p>
+              Anyone with an arabiancementcompany.com Google account can already use this app - manage who additionally gets admin access.
+            </p>
             <button
               type="button"
               className="btn"
               onClick={() => {
-                window.open(adminPanelUrl(session.token), "myfls_admin");
+                window.open(adminPanelUrl(), "myfls_admin");
               }}
             >
-              Manage users
+              Manage admins
             </button>
           </section>
         )}
