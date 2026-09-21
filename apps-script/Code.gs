@@ -513,6 +513,17 @@ function redirectHtml_(url, message, linkLabel) {
 // window directly, then closing the popup, gets the result to the React
 // app with no navigation anywhere. App.jsx's message listener applies the
 // payload (a URL hash fragment) to its own session state.
+//
+// window.top.opener can come back empty even though the popup really was
+// opened from the app tab: a domain-restricted deployment sometimes
+// routes the very first popup through an extra Google account-
+// confirmation step, and that kind of cross-origin hop can sever the
+// opener link as a browser security measure - nothing this code can
+// prevent. When that happens there is no window left to message at all,
+// so the fallback here is a visible link the visitor can click by hand
+// (LoginScreen.jsx also detects this - the popup closing without ever
+// completing - and retries automatically once, which is usually enough
+// since the retry doesn't need that extra confirmation step).
 function postMessageHtml_(hash) {
   // Apps Script's server-side V8 runtime has no URL constructor (unlike a
   // browser or Node), so this has to be plain string surgery instead of
@@ -520,7 +531,14 @@ function postMessageHtml_(hash) {
   // "https://host/path/", and the origin is just its first two segments.
   const targetOrigin = APP_URL.split('/').slice(0, 3).join('/');
   const html =
-    '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+    '<body style="font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;background:#0a1628;color:#e8f4fd;' +
+    'text-align:center;padding-top:20vh;margin:0;">' +
+    '<div id="fallback" hidden>' +
+    '<p>Couldn\'t signal the original tab automatically.</p>' +
+    '<p><a href="' + APP_URL + '#' + escapeHtml_(hash) + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:10px 22px;' +
+    'background:#00b4d8;color:#0a1628;font-weight:600;text-decoration:none;border-radius:6px;">Continue to MyFLS &rarr;</a></p>' +
+    '</div>' +
     '<script>' +
     '(function () {' +
     '  var payload = { source: "myfls-auth", hash: ' + JSON.stringify(hash) + ' };' +
@@ -532,7 +550,7 @@ function postMessageHtml_(hash) {
     '      return;' +
     '    }' +
     '  } catch (e) {}' +
-    '  try { window.top.postMessage(payload, target); } catch (e2) {}' +
+    '  document.getElementById("fallback").hidden = false;' +
     '})();' +
     '</script>' +
     '</body></html>';
