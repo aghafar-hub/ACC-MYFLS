@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlainFolderTree, fetchRichDocs, fetchRichTree, fetchSourcesList, openDocument } from "./api";
-import { APP_CONFIG, clearIdentity, getIdentity, isAppsScriptConfigured, setIdentity } from "./config";
+import { clearIdentity, getIdentity, isAppsScriptConfigured, setIdentity } from "./config";
 import { ancestorChain, buildCatalog, buildDocsByNode, collectDescendantDocs, collectDescendantDocsMulti, indexPlainTree } from "./domain";
 
 import LoginScreen from "./components/LoginScreen";
@@ -13,16 +13,16 @@ import Toast from "./components/Toast";
 const PAGE_SIZE = 100;
 
 // Sign-in is a Google identity check (Session.getActiveUser() in
-// Code.gs), not a password - Apps Script reports back who's signed in as
-// a hash-fragment-shaped string, "email=...&role=..." or "error=...".
-// It's never actually put in the address bar: it arrives via postMessage
-// from the small popup LoginScreen.jsx opens (see the message listener
-// below), so this just needs to parse the string.
-function parseAuthHash(hash) {
-  if (!hash) return null;
-  const params = new URLSearchParams(hash);
+// Code.gs), not a password - a same-tab redirect (see LoginScreen.jsx)
+// sends this tab straight back with the result on the URL *fragment*
+// (never sent to any server, unlike a query string), shaped like
+// "email=...&role=..." or "error=...".
+function consumeLoginHash() {
+  if (!window.location.hash) return null;
+  const params = new URLSearchParams(window.location.hash.slice(1));
   const email = params.get("email");
   const error = params.get("error");
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
   if (email) {
     const identity = { email, role: params.get("role") || "user" };
     setIdentity(identity);
@@ -32,17 +32,11 @@ function parseAuthHash(hash) {
   return null;
 }
 
-const APPS_SCRIPT_ORIGIN = (() => {
-  try {
-    return new URL(APP_CONFIG.APPS_SCRIPT_URL).origin;
-  } catch {
-    return null;
-  }
-})();
-
 export default function App() {
   const [authState, setAuthState] = useState(() => {
-    const identity = getIdentity();
+    const hashResult = consumeLoginHash();
+    if (hashResult?.error) return { view: "login", error: hashResult.error };
+    const identity = hashResult?.identity || getIdentity();
     return identity ? { view: "app", session: identity } : { view: "login" };
   });
 
@@ -73,29 +67,6 @@ export default function App() {
   useEffect(() => {
     setSidebarOpen(false);
   }, [activeSourceId, selection]);
-
-  // Sign-in results arrive here via postMessage from the small popup
-  // LoginScreen.jsx opens (see postMessageHtml_ in Code.gs) rather than
-  // by this tab reloading with a new URL hash - the popup posts the
-  // result back and closes itself, so this tab never navigates anywhere
-  // during sign-in.
-  useEffect(() => {
-    function onMessage(event) {
-      if (APPS_SCRIPT_ORIGIN && event.origin !== APPS_SCRIPT_ORIGIN) return;
-      if (!event.data || event.data.source !== "myfls-auth") return;
-      const result = parseAuthHash(event.data.hash);
-      if (result?.identity) {
-        setAuthState({ view: "app", session: result.identity });
-      } else if (result?.error) {
-        // errorSeq always changes even if the error text repeats -
-        // LoginScreen keys off it to reliably clear its "Signing in…"
-        // state each time, not just when the text differs.
-        setAuthState((prev) => ({ ...prev, error: result.error, errorSeq: (prev.errorSeq || 0) + 1 }));
-      }
-    }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
 
   const showToast = useCallback((msg) => setToast(msg), []);
 
@@ -323,7 +294,7 @@ export default function App() {
   };
 
   if (authState.view === "login") {
-    return <LoginScreen errorMsg={authState.error} errorSeq={authState.errorSeq} />;
+    return <LoginScreen errorMsg={authState.error} />;
   }
 
   return (

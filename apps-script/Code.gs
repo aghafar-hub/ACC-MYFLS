@@ -67,9 +67,8 @@ function getSettingsSheetId_() {
   );
 }
 
-// The GitHub Pages URL this app is served from - used both to redirect
-// back after opening a document and as the target origin for the
-// postMessage handoff described down by postMessageHtml_.
+// The GitHub Pages URL this app is served from - used to redirect back
+// after signing in or opening a document (see redirectHtml_).
 const APP_URL = 'https://aghafar-hub.github.io/ACC-MYFLS/';
 
 // Seeded as an admin if not already present, so the app can never end up
@@ -337,19 +336,20 @@ function doPost(e) {
 
 // ---------------- sign-in ----------------
 
-// Opened in a small popup (see LoginScreen.jsx) - no form, no password,
-// just a plain GET that reports back whichever Google account the
-// visitor is already signed in as.
+// Reached via a same-tab redirect (see LoginScreen.jsx) - no popup, no
+// form, no password, just a plain GET that reports back whichever Google
+// account the visitor is already signed in as, then redirectHtml_ sends
+// them straight back into the app with that identity on the URL hash.
 function handleIdentify_() {
   const email = getIdentityEmail_();
   if (!email) {
-    return postMessageHtml_('error=' + encodeURIComponent('Could not verify your Google account. Please try again.'));
+    return redirectHtml_(APP_URL + '#error=' + encodeURIComponent('Could not verify your Google account. Please try again.'));
   }
-  return postMessageHtml_(identityHash_(email, getUserRole_(email)));
+  return redirectHtml_(APP_URL + '#' + identityHash_(email, getUserRole_(email)), 'Signing in&hellip;');
 }
 
-// The hash-fragment payload (never a full URL - see postMessageHtml_ for
-// why) that tells the React app who's signed in.
+// The hash-fragment payload App.jsx's consumeLoginHash() parses to know
+// who's signed in.
 function identityHash_(email, role) {
   return 'email=' + encodeURIComponent(email) + '&role=' + encodeURIComponent(role);
 }
@@ -451,20 +451,32 @@ function renderAdminPage_(email, notice) {
 // iframe (even for a "direct" visit to the /exec URL) — its sandbox
 // permissions do not include cross-origin top navigation, so a
 // script-driven window.top.location.replace() to a different origin (our
-// GitHub Pages app) is silently blocked. A same-frame location.href
-// fallback doesn't help either: it just loads the destination *inside*
-// that same iframe, trapping the user under the script.google.com address
-// forever with our real app rendered one level too deep.
+// GitHub Pages app) is silently blocked - this is why the fallback below
+// exists at all.
 //
-// Used for document-open only (see postMessageHtml_ below for sign-in,
-// which doesn't need any of this). Opening a document is launched as its
-// own standalone tab with rel="noopener" (see api.js) specifically so
-// it's disposable - there's nothing to hand control back to, and no
-// reason to: it exists only to show one file, so a same-frame
-// location.replace() ending up with the Drive viewer rendered inside
-// Google's iframe (address bar unchanged) is a fine trade for not making
-// every document open require a manual click. The visible button remains
-// as a last-resort manual option either way.
+// Two different callers rely on that fallback for two different reasons:
+//
+// - Sign-in (handleIdentify_) is a same-tab redirect on purpose - no
+//   popup, no new window at all, so there is no window.opener here to
+//   hand off to, and the window.top attempt above is *always* blocked in
+//   this shape (this tab's own top-level browsing context is exactly the
+//   ancestor frame the sandbox refuses to navigate). The same-frame
+//   location.replace() fallback is therefore the *normal* path here, not
+//   a rare edge case: it reliably loads the real React app right where
+//   the visitor already is. The one visible side effect is the address
+//   bar keeps showing this script.google.com URL instead of jumping back
+//   to github.io - a deliberate trade-off for never opening any popup or
+//   new window at all.
+// - Document-open (doGet's path lookup) is launched as its own
+//   standalone tab with rel="noopener" (see api.js) specifically so it's
+//   disposable - there's nothing to hand control back to either. Ending
+//   up with the Drive viewer rendered inside Google's iframe (address
+//   bar unchanged) is a fine trade there too, for not making every
+//   document open require a manual click.
+//
+// The visible button remains as a last-resort manual option in both
+// cases, for the rare browser/config where even the same-frame fallback
+// doesn't fire.
 function redirectHtml_(url, message, linkLabel) {
   const html =
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
@@ -486,71 +498,6 @@ function redirectHtml_(url, message, linkLabel) {
     '  } catch (e) {}' +
     '  try { (window.top || window).location.replace(url); } catch (e2) {}' +
     '  try { window.location.replace(url); } catch (e3) {}' +
-    '})();' +
-    '</script>' +
-    '</body></html>';
-  return HtmlService.createHtmlOutput(html);
-}
-
-// Sign-in happens inside a small named popup window (see LoginScreen.jsx),
-// not a hidden <iframe> - a hidden iframe was tried first and seemed
-// cleaner (no window for the visitor to notice at all), but Google's Apps
-// Script responses always send `X-Frame-Options: SAMEORIGIN` and
-// `Content-Security-Policy: frame-ancestors 'self'`, so the browser
-// silently refuses to render Apps Script content inside an iframe on any
-// other origin at all - the iframe just stays blank forever. That
-// restriction doesn't apply to a popup: a popup is its own top-level
-// browsing context, not "framed" by anything, so this loads normally.
-//
-// This response is still wrapped in Google's own sandboxed iframe *within
-// that popup* (as redirectHtml_ above explains), so navigating anywhere
-// directly is still out - but postMessage is a message, not a
-// navigation, and was built specifically to cross exactly this kind of
-// boundary. window.top resolves to the popup's own top-level window
-// (the popup itself, not the original tab) no matter how deep this is
-// nested inside Google's wrapper, and window.top.opener from there reaches
-// back to the *original* tab that opened the popup - postMessage-ing that
-// window directly, then closing the popup, gets the result to the React
-// app with no navigation anywhere. App.jsx's message listener applies the
-// payload (a URL hash fragment) to its own session state.
-//
-// window.top.opener can come back empty even though the popup really was
-// opened from the app tab: a domain-restricted deployment sometimes
-// routes the very first popup through an extra Google account-
-// confirmation step, and that kind of cross-origin hop can sever the
-// opener link as a browser security measure - nothing this code can
-// prevent. When that happens there is no window left to message at all,
-// so the fallback here is a visible link the visitor can click by hand
-// (LoginScreen.jsx also detects this - the popup closing without ever
-// completing - and retries automatically once, which is usually enough
-// since the retry doesn't need that extra confirmation step).
-function postMessageHtml_(hash) {
-  // Apps Script's server-side V8 runtime has no URL constructor (unlike a
-  // browser or Node), so this has to be plain string surgery instead of
-  // new URL(APP_URL).origin - APP_URL always looks like
-  // "https://host/path/", and the origin is just its first two segments.
-  const targetOrigin = APP_URL.split('/').slice(0, 3).join('/');
-  const html =
-    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
-    '<body style="font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;background:#0a1628;color:#e8f4fd;' +
-    'text-align:center;padding-top:20vh;margin:0;">' +
-    '<div id="fallback" hidden>' +
-    '<p>Couldn\'t signal the original tab automatically.</p>' +
-    '<p><a href="' + APP_URL + '#' + escapeHtml_(hash) + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:10px 22px;' +
-    'background:#00b4d8;color:#0a1628;font-weight:600;text-decoration:none;border-radius:6px;">Continue to MyFLS &rarr;</a></p>' +
-    '</div>' +
-    '<script>' +
-    '(function () {' +
-    '  var payload = { source: "myfls-auth", hash: ' + JSON.stringify(hash) + ' };' +
-    '  var target = ' + JSON.stringify(targetOrigin) + ';' +
-    '  try {' +
-    '    if (window.top.opener && !window.top.opener.closed) {' +
-    '      window.top.opener.postMessage(payload, target);' +
-    '      window.top.close();' +
-    '      return;' +
-    '    }' +
-    '  } catch (e) {}' +
-    '  document.getElementById("fallback").hidden = false;' +
     '})();' +
     '</script>' +
     '</body></html>';
