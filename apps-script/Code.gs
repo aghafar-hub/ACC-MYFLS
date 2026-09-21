@@ -131,7 +131,14 @@ function testSettingsAccess() {
     'Session.getActiveUser(): ' +
       (getIdentityEmail_() || '(blank when run from the editor directly - only resolves during a real web request)')
   );
-  Logger.log('ALL CHECKS PASSED - the settings sheet is fully readable and writable.');
+  try {
+    var root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+    Logger.log('OK: opened ROOT_FOLDER_ID -> "' + root.getName() + '"');
+  } catch (e) {
+    Logger.log('FAILED to open ROOT_FOLDER_ID: ' + e);
+    return;
+  }
+  Logger.log('ALL CHECKS PASSED - the settings sheet and Drive root folder are both reachable.');
 }
 
 // ---------------- one-time setup / migration ----------------
@@ -306,9 +313,17 @@ function doGet(e) {
 
   let folder;
   try {
-    folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+    // Retried for the same reason Sheets access is (see withRetry_): a
+    // Drive/Sheets call can transiently throw right after a deployment
+    // change, and switching to "Execute as: User accessing the web app"
+    // is exactly that kind of change - this folder is already shared
+    // domain-wide, so a real permissions problem would fail every time,
+    // not just right after a redeploy.
+    folder = withRetry_(function () {
+      return DriveApp.getFolderById(ROOT_FOLDER_ID);
+    });
   } catch (err) {
-    return htmlMsg_('ROOT_FOLDER_ID is not set correctly in Code.gs.');
+    return htmlMsg_('ROOT_FOLDER_ID is not set correctly in Code.gs, or this Google account cannot access that Drive folder.');
   }
 
   for (const seg of segments) {
