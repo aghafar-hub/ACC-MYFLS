@@ -28,20 +28,34 @@ const ROOT_FOLDER_ID = '17OeueXcCpoAdjaZYP7xeDzIU99lejH0X';
 // confusing "You do not have permission to access the requested
 // document" exception. Script Properties survive code updates.
 //
-// Set it once: Apps Script editor -> Project Settings (gear icon, left
-// sidebar) -> Script Properties -> Add script property ->
-// name "SETTINGS_SHEET_ID", value = your settings spreadsheet's id
-// (the long id in its URL, or copy it from the Logger output the first
-// time you run setupSettingsSheet() / migrateToPasswordAuth() below).
+// setupSettingsSheet() / migrateToPasswordAuth() below set this property
+// automatically. If it's ever missing - a setup step skipped, a Script
+// Properties edit that didn't save, etc. - getSettingsSheetId_() below
+// self-heals by finding the sheet in Drive by its known name and saving
+// the property itself, rather than requiring a precise manual UI step
+// every time something goes wrong.
 function getSettingsSheetId_() {
-  const id = PropertiesService.getScriptProperties().getProperty('SETTINGS_SHEET_ID');
-  if (!id) {
-    throw new Error(
-      'SETTINGS_SHEET_ID is not set. In the Apps Script editor, open Project Settings (gear icon) > ' +
-        'Script Properties, and add SETTINGS_SHEET_ID with your settings spreadsheet\'s id as the value.'
-    );
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('SETTINGS_SHEET_ID');
+  if (id) return id;
+
+  const candidateNames = ['MyFLS Document Browser - Access Control', 'MyFLS Document Browser - Settings'];
+  for (const name of candidateNames) {
+    const files = DriveApp.getFilesByName(name);
+    if (files.hasNext()) {
+      id = files.next().getId();
+      props.setProperty('SETTINGS_SHEET_ID', id);
+      Logger.log('SETTINGS_SHEET_ID was unset - found "' + name + '" in Drive and saved its id (' + id + ') automatically.');
+      return id;
+    }
   }
-  return id;
+
+  throw new Error(
+    'SETTINGS_SHEET_ID is not set, and no settings spreadsheet named "MyFLS Document Browser - Access ' +
+      'Control" or "MyFLS Document Browser - Settings" was found in Drive. Run setupSettingsSheet() once ' +
+      '(function dropdown in the Apps Script editor, then Run), or set the SETTINGS_SHEET_ID script ' +
+      "property manually under Project Settings (gear icon) > Script Properties."
+  );
 }
 
 // The GitHub Pages URL this app is served from - used to redirect back
