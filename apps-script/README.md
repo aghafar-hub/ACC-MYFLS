@@ -1,9 +1,8 @@
 # Apps Script backend
 
-`Code.gs` is the backend: it resolves the visitor's Google identity for
-sign-in, serves the admin page, and resolves/opens a document from
-Drive when there's no direct link baked in yet (see the main
-[README](../README.md#4-make-documents-open-instantly-direct-drive-links)).
+`Code.gs` is the backend: it serves the admin page and resolves/opens a
+document from Drive when there's no direct link baked in yet (see the
+main [README](../README.md#4-make-documents-open-instantly-direct-drive-links)).
 
 This file is tracked here as the source of truth, but Google Apps
 Script has no git integration — you paste its contents into the online
@@ -13,24 +12,31 @@ this file and what's pasted into script.google.com in sync manually.
 
 ## Access control
 
-Sign-in uses the visitor's existing **Google Workspace identity**
-(`Session.getActiveUser()`), not a separate password system — anyone
-signed into an `@arabiancementcompany.com` Google account can open the
-app with no signup step. This requires the deployment to require
-authentication (see step 5 below); Apps Script only resolves a real
-identity when the platform made the visitor sign in to reach it at all.
+**The React app itself has no login screen** — anyone with the GitHub
+Pages link can browse the tree/search. What actually protects the
+documents is Google Drive's own sharing: the Drive folder/files are
+shared only within `arabiancementcompany.com`, so opening a document
+still requires signing into a Google account in that domain — Google's
+own sign-in screen handles that, outside this app entirely, exactly like
+opening any other domain-shared Drive file.
 
-The "Users" sheet (in the same settings spreadsheet as before) is
-**not** an access allowlist — domain membership is. It only ever holds
-`Email` + `Role`, and only controls who additionally gets **admin**
-access: from the app's **Settings** panel (gear icon, top right), an
-admin gets a "Manage admins" button that opens a page to promote or
-demote anyone by email — no spreadsheet editing required.
-`aghafar@arabiancementcompany.com` is hardcoded as a permanent bootstrap
-admin in `Code.gs` — a safety net so the app can never end up with no
-admin able to get back in.
+`Session.getActiveUser()` is still used server-side (for the admin page,
+and to resolve the Drive path when there's no direct link yet), which is
+why the deployment still needs to require authentication (see step 5
+below) rather than being open to "Anyone" — Apps Script only resolves a
+real identity when the platform made the visitor sign in to reach it at
+all.
 
-If you're picking this project back up and it still has the older
+The "Users" sheet is **not** an access allowlist — domain membership on
+the Drive folder is. It only ever holds `Email` + `Role`, and only
+controls who additionally gets **admin** access: from the app's
+**Settings** panel (gear icon, top right), an admin gets a "Manage
+admins" button that opens a page to promote or demote anyone by email —
+no spreadsheet editing required. `aghafar@arabiancementcompany.com` is
+hardcoded as a permanent bootstrap admin in `Code.gs` — a safety net so
+the app can never end up with no admin able to get back in.
+
+If you're picking this project back up and it still has an older
 email+password version's settings sheet (password/session columns), run
 `migrateToGoogleIdentity()` once (see step 3) to drop those columns —
 there's nothing left that needs them.
@@ -136,9 +142,10 @@ alone does not update the deployed URL's behavior. This is the #1
 source of "I fixed it but it's still broken" confusion with this
 backend — always double check you redeployed.
 
-**Managing admins**: sign into the app, open **Settings** (gear icon) →
-**Manage admins**. Anyone else in the domain can already sign in and use
-the app with no action needed from you at all.
+**Managing admins**: open the app, open **Settings** (gear icon) →
+**Manage admins** — Google will ask you to sign in at that point if you
+aren't already. Anyone else in the domain can already open and use the
+app itself with no action needed from you at all.
 
 ### 3. Fill in `src/config.js`
 

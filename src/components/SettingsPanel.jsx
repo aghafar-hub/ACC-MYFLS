@@ -2,7 +2,7 @@ import { adminPanelUrl } from "../api";
 import { THEMES } from "../config";
 import { useTheme } from "../ThemeContext";
 
-export default function SettingsPanel({ session, onClose, onSignOut }) {
+export default function SettingsPanel({ onClose }) {
   const { themeId, setTheme } = useTheme();
 
   return (
@@ -34,27 +34,17 @@ export default function SettingsPanel({ session, onClose, onSignOut }) {
           </div>
         </section>
 
-        {session.role === "admin" && (
-          <section className="settings-section">
-            <h3>Admin</h3>
-            <p>
-              Anyone with an arabiancementcompany.com Google account can already use this app - manage who additionally gets admin access.
-            </p>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                window.open(adminPanelUrl(), "myfls_admin");
-              }}
-            >
-              Manage admins
-            </button>
-          </section>
-        )}
-
         <section className="settings-section">
-          <button className="btn secondary" onClick={onSignOut}>
-            Sign out
+          <h3>Admin</h3>
+          <p>Opens a page to manage who has admin access. You'll need to be signed in as an admin to make changes there.</p>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              window.open(adminPanelUrl(), "myfls_admin");
+            }}
+          >
+            Manage admins
           </button>
         </section>
       </div>

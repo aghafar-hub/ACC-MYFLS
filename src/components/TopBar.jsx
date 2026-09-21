@@ -1,4 +1,4 @@
-export default function TopBar({ session, searchTerm, onSearchChange, authNotice, onOpenSettings, onToggleSidebar }) {
+export default function TopBar({ searchTerm, onSearchChange, authNotice, onOpenSettings, onToggleSidebar }) {
   return (
     <header className="topbar">
       <button
@@ -34,7 +34,6 @@ export default function TopBar({ session, searchTerm, onSearchChange, authNotice
       </div>
       <div className="auth">
         <span className="auth-status">{authNotice}</span>
-        <span className="user-email">{session.email}</span>
         <button className="btn icon-btn" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
           &#9881;
         </button>

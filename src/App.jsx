@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlainFolderTree, fetchRichDocs, fetchRichTree, fetchSourcesList, openDocument } from "./api";
-import { clearIdentity, getIdentity, isAppsScriptConfigured, setIdentity } from "./config";
+import { isAppsScriptConfigured } from "./config";
 import { ancestorChain, buildCatalog, buildDocsByNode, collectDescendantDocs, collectDescendantDocsMulti, indexPlainTree } from "./domain";
 
-import LoginScreen from "./components/LoginScreen";
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import DocumentTable from "./components/DocumentTable";
@@ -12,34 +11,12 @@ import Toast from "./components/Toast";
 
 const PAGE_SIZE = 100;
 
-// Sign-in is a Google identity check (Session.getActiveUser() in
-// Code.gs), not a password - a same-tab redirect (see LoginScreen.jsx)
-// sends this tab straight back with the result on the URL *fragment*
-// (never sent to any server, unlike a query string), shaped like
-// "email=...&role=..." or "error=...".
-function consumeLoginHash() {
-  if (!window.location.hash) return null;
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  const email = params.get("email");
-  const error = params.get("error");
-  window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  if (email) {
-    const identity = { email, role: params.get("role") || "user" };
-    setIdentity(identity);
-    return { identity };
-  }
-  if (error) return { error };
-  return null;
-}
-
+// No login screen - anyone with the link can browse the tree/search here.
+// The documents themselves stay protected: opening one still requires a
+// arabiancementcompany.com Google account, since the underlying Drive
+// files/folder are shared domain-only (Google's own sign-in handles
+// that, outside this app entirely). See apps-script/README.md.
 export default function App() {
-  const [authState, setAuthState] = useState(() => {
-    const hashResult = consumeLoginHash();
-    if (hashResult?.error) return { view: "login", error: hashResult.error };
-    const identity = hashResult?.identity || getIdentity();
-    return identity ? { view: "app", session: identity } : { view: "login" };
-  });
-
   const [sources, setSources] = useState(null);
   const [sourceData, setSourceData] = useState({});
   const sourceDataRef = useRef(sourceData);
@@ -71,11 +48,10 @@ export default function App() {
   const showToast = useCallback((msg) => setToast(msg), []);
 
   useEffect(() => {
-    if (authState.view !== "app") return;
     fetchSourcesList()
       .then(setSources)
       .catch(() => showToast("Couldn't load the plants/projects list. Check your connection and reload."));
-  }, [authState.view, showToast]);
+  }, [showToast]);
 
   const catalog = useMemo(() => (sources ? buildCatalog(sources) : null), [sources]);
 
@@ -288,19 +264,9 @@ export default function App() {
     selectPlainFolder(activeSourceId, path, true);
   };
 
-  const handleSignOut = () => {
-    clearIdentity();
-    setAuthState({ view: "login" });
-  };
-
-  if (authState.view === "login") {
-    return <LoginScreen errorMsg={authState.error} />;
-  }
-
   return (
     <div id="appRoot">
       <TopBar
-        session={authState.session}
         searchTerm={searchTerm}
         onSearchChange={(v) => {
           setSearchTerm(v);
@@ -352,7 +318,7 @@ export default function App() {
         />
       </main>
 
-      {settingsOpen && <SettingsPanel session={authState.session} onClose={() => setSettingsOpen(false)} onSignOut={handleSignOut} />}
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       <Toast message={toast} onDone={() => setToast("")} />
     </div>
   );

@@ -33,7 +33,7 @@ public/                                     - static files served as-is (not pro
   data/<source-id>/                         - tree.json + documents.json (rich) or folderTree.json (plain)
   data/sources.json                         - the manifest of every source
   acc-logo.png, fls-logo.png, manifest.json, sw.js, icon-*.png
-apps-script/                                - the Google Apps Script backend (sign-in, admin page,
+apps-script/                                - the Google Apps Script backend (admin page,
                                                Drive path resolution) - see apps-script/README.md
 scripts/                                    - Node tools that generate public/data/*.json (not part of the
                                                deployed app itself) - see "Regenerating the data" below
@@ -74,11 +74,12 @@ Standard`
 Several other folders under `Desktop/MyFLS` (Projects, and a few smaller
 ones) are intentionally left out for now — see "Regenerating the data."
 
-Everyone can open **Settings** (gear icon, top right) to pick one of 10
-color themes, and admins get a "Manage admins" link there too. See
-[`apps-script/README.md`](apps-script/README.md) for how sign-in, access
-control, and document-opening actually work, and the one-time setup
-required.
+There's no login screen — anyone with the link can browse the tree and
+search. Everyone can open **Settings** (gear icon, top right) to pick one
+of 10 color themes, and there's a "Manage admins" link there too. See
+[`apps-script/README.md`](apps-script/README.md) for how access control
+and document-opening actually work (documents stay protected by Drive's
+own domain-only sharing), and the one-time setup required.
 
 ## Local development
 

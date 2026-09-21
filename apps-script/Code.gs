@@ -6,12 +6,16 @@
  * then Deploy > New deployment > type "Web app". See README.md for the
  * full walkthrough. No Google Cloud Console, no billing, no OAuth client.
  *
- * This version signs people in with their existing Google Workspace
- * identity (Session.getActiveUser()) rather than a separate email+
- * password system - anyone signed into a @yourcompany.com Google account
- * can use the app with no signup step at all. The "Users" sheet only
- * ever holds Email + Role, purely to control who additionally gets admin
- * access; it is not an access allowlist (domain membership is).
+ * The React app itself has no login screen - anyone with the link can
+ * browse the tree/search. Opening a document still requires signing into
+ * a @yourcompany.com Google account, since the underlying Drive
+ * files/folder are shared domain-only (Google's own sign-in handles that
+ * automatically, outside this app entirely) - Session.getActiveUser()
+ * here just resolves who that already-authenticated visitor is, for the
+ * admin page and for the Drive path lookup. The "Users" sheet only ever
+ * holds Email + Role, purely to control who additionally gets admin
+ * access; it is not an access allowlist (domain membership on the Drive
+ * folder is).
  *
  * This requires the deployment to be:
  *   Execute the app as: User accessing the web app
@@ -297,7 +301,6 @@ function removeUser_(email) {
 // ---------------- web app entry points ----------------
 
 function doGet(e) {
-  if (e.parameter.identify === '1') return handleIdentify_();
   if (e.parameter.admin === '1') return handleAdminPage_();
 
   const email = getIdentityEmail_();
@@ -347,26 +350,6 @@ function doPost(e) {
   const action = e.parameter.action;
   if (action === 'admin-set-role' || action === 'admin-remove') return handleAdminMutation_(e);
   return htmlMsg_('Unknown action.');
-}
-
-// ---------------- sign-in ----------------
-
-// Reached via a same-tab redirect (see LoginScreen.jsx) - no popup, no
-// form, no password, just a plain GET that reports back whichever Google
-// account the visitor is already signed in as, then redirectHtml_ sends
-// them straight back into the app with that identity on the URL hash.
-function handleIdentify_() {
-  const email = getIdentityEmail_();
-  if (!email) {
-    return redirectHtml_(APP_URL + '#error=' + encodeURIComponent('Could not verify your Google account. Please try again.'));
-  }
-  return redirectHtml_(APP_URL + '#' + identityHash_(email, getUserRole_(email)), 'Signing in&hellip;');
-}
-
-// The hash-fragment payload App.jsx's consumeLoginHash() parses to know
-// who's signed in.
-function identityHash_(email, role) {
-  return 'email=' + encodeURIComponent(email) + '&role=' + encodeURIComponent(role);
 }
 
 // ---------------- admin page ----------------
@@ -469,29 +452,14 @@ function renderAdminPage_(email, notice) {
 // GitHub Pages app) is silently blocked - this is why the fallback below
 // exists at all.
 //
-// Two different callers rely on that fallback for two different reasons:
-//
-// - Sign-in (handleIdentify_) is a same-tab redirect on purpose - no
-//   popup, no new window at all, so there is no window.opener here to
-//   hand off to, and the window.top attempt above is *always* blocked in
-//   this shape (this tab's own top-level browsing context is exactly the
-//   ancestor frame the sandbox refuses to navigate). The same-frame
-//   location.replace() fallback is therefore the *normal* path here, not
-//   a rare edge case: it reliably loads the real React app right where
-//   the visitor already is. The one visible side effect is the address
-//   bar keeps showing this script.google.com URL instead of jumping back
-//   to github.io - a deliberate trade-off for never opening any popup or
-//   new window at all.
-// - Document-open (doGet's path lookup) is launched as its own
-//   standalone tab with rel="noopener" (see api.js) specifically so it's
-//   disposable - there's nothing to hand control back to either. Ending
-//   up with the Drive viewer rendered inside Google's iframe (address
-//   bar unchanged) is a fine trade there too, for not making every
-//   document open require a manual click.
-//
-// The visible button remains as a last-resort manual option in both
-// cases, for the rare browser/config where even the same-frame fallback
-// doesn't fire.
+// Used for document-open (doGet's path lookup), which is launched as its
+// own standalone tab with rel="noopener" (see api.js) specifically so
+// it's disposable - there's nothing to hand control back to. Ending up
+// with the Drive viewer rendered inside Google's iframe (address bar
+// unchanged, via the same-frame location.replace() fallback) is a fine
+// trade for not making every document open require a manual click. The
+// visible button remains as a last-resort manual option for the rare
+// browser/config where even that fallback doesn't fire.
 function redirectHtml_(url, message, linkLabel) {
   const html =
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
@@ -503,16 +471,8 @@ function redirectHtml_(url, message, linkLabel) {
     '<script>' +
     '(function () {' +
     '  var url = ' + JSON.stringify(url) + ';' +
-    '  try {' +
-    '    if (window.opener && !window.opener.closed) {' +
-    '      window.opener.location = url;' +
-    '      if (window.opener.focus) window.opener.focus();' +
-    '      window.close();' +
-    '      return;' +
-    '    }' +
-    '  } catch (e) {}' +
-    '  try { (window.top || window).location.replace(url); } catch (e2) {}' +
-    '  try { window.location.replace(url); } catch (e3) {}' +
+    '  try { (window.top || window).location.replace(url); } catch (e) {}' +
+    '  try { window.location.replace(url); } catch (e2) {}' +
     '})();' +
     '</script>' +
     '</body></html>';
