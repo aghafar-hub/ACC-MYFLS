@@ -427,7 +427,7 @@ function doGet(e) {
   }
 
   const url = files.next().getUrl();
-  return redirectHtml_(url, 'Opening ' + escapeHtml_(fileName) + '&hellip;');
+  return redirectHtml_(url, 'Opening ' + escapeHtml_(fileName) + '&hellip;', 'Open document');
 }
 
 function doPost(e) {
@@ -591,17 +591,24 @@ function renderAdminPage_(email, token, notice) {
 // a `window.opener` handle back to the *real* tab. Navigating window.opener
 // (always permitted cross-origin — you can always redirect a window you
 // have a handle to) and then closing this popup gets the user back to
-// github.io reliably, with no iframe involved at all. The visible button
-// is a guaranteed manual fallback for the rare case this is opened with no
-// opener (e.g. a bookmarked link).
-function redirectHtml_(url, message) {
+// github.io reliably, with no iframe involved at all.
+//
+// Opening a document works differently: it's launched as its own
+// standalone tab with rel="noopener" (see api.js), so there's no opener
+// to hand off to. There, a same-frame location.replace() is the right
+// fallback instead of a trap: it's a disposable tab that exists only to
+// show one file, so ending up with the Drive viewer rendered inside
+// Google's iframe (address bar unchanged) is a fine trade for not making
+// every document open require a manual click. The visible button remains
+// as a last-resort manual option either way.
+function redirectHtml_(url, message, linkLabel) {
   const html =
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
     '<body style="font-family:-apple-system,Segoe UI,Arial,Helvetica,sans-serif;background:#0a1628;color:#e8f4fd;' +
     'text-align:center;padding-top:20vh;margin:0;">' +
     '<p>' + (message || 'Redirecting&hellip;') + '</p>' +
     '<p><a href="' + url + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:10px 22px;' +
-    'background:#00b4d8;color:#0a1628;font-weight:600;text-decoration:none;border-radius:6px;">Continue to MyFLS &rarr;</a></p>' +
+    'background:#00b4d8;color:#0a1628;font-weight:600;text-decoration:none;border-radius:6px;">' + (linkLabel || 'Continue to MyFLS') + ' &rarr;</a></p>' +
     '<script>' +
     '(function () {' +
     '  var url = ' + JSON.stringify(url) + ';' +
@@ -614,6 +621,7 @@ function redirectHtml_(url, message) {
     '    }' +
     '  } catch (e) {}' +
     '  try { (window.top || window).location.replace(url); } catch (e2) {}' +
+    '  try { window.location.replace(url); } catch (e3) {}' +
     '})();' +
     '</script>' +
     '</body></html>';
