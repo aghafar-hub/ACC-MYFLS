@@ -27,8 +27,9 @@ export default function ChangePasswordScreen({ session, errorMsg, errorSeq }) {
     }
     setLocalError("");
     setSubmitting(true);
-    // The form posts into the hidden <iframe> below - see LoginScreen.jsx
-    // for why (postMessage instead of a popup or page navigation).
+    // The POST opens in a small named popup - see LoginScreen.jsx for why
+    // (Google blocks a hidden same-page iframe here entirely).
+    window.open("", "myfls_auth", "width=420,height=360,menubar=no,toolbar=no,location=no,status=no");
   };
 
   const handleSignOut = (e) => {
@@ -58,7 +59,7 @@ export default function ChangePasswordScreen({ session, errorMsg, errorSeq }) {
           You're signed in with a temporary password. Choose a new one to continue.
         </p>
         {error && <p className="login-error">{error}</p>}
-        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth_frame" onSubmit={handleSubmit}>
+        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth" onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="change-password" />
           <input type="hidden" name="token" value={session.token} />
           <label>
@@ -88,7 +89,6 @@ export default function ChangePasswordScreen({ session, errorMsg, errorSeq }) {
             {submitting ? "Saving…" : "Set password"}
           </button>
         </form>
-        <iframe name="myfls_auth_frame" title="Change password" hidden />
         <p className="login-hint">
           <a href="#" onClick={handleSignOut}>
             Sign out instead

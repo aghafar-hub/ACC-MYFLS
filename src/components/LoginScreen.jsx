@@ -21,14 +21,17 @@ export default function LoginScreen({ errorMsg, errorSeq }) {
     }
     setLocalError("");
     setSubmitting(true);
-    // The form posts into the hidden <iframe> below instead of navigating
-    // this tab or opening a popup. Apps Script's own sandboxed iframe
-    // blocks a plain redirect back to a different origin no matter how
-    // it's triggered, but postMessage was built specifically to cross
-    // that kind of boundary and isn't subject to it - so Apps Script's
-    // response posts the result back up (see App.jsx's message listener)
-    // instead of trying to navigate anywhere. Nothing ever leaves this
-    // page, so there's no popup window or extra tab to notice at all.
+    // The POST opens in a small named popup (Google refuses to let Apps
+    // Script responses load inside a same-page iframe on another origin -
+    // it sends X-Frame-Options: SAMEORIGIN - so a hidden iframe here just
+    // stays blank forever; a popup isn't "framed" so it's unaffected).
+    // Apps Script's response posts the result back to this tab via
+    // window.opener.postMessage and closes itself (see postMessageHtml_
+    // in Code.gs) rather than navigating anywhere - Apps Script's own
+    // sandboxed iframe blocks a plain redirect to a different origin
+    // regardless of how it's triggered, but postMessage isn't a
+    // navigation and was built to cross exactly that kind of boundary.
+    window.open("", "myfls_auth", "width=420,height=360,menubar=no,toolbar=no,location=no,status=no");
   };
 
   const error = localError || errorMsg;
@@ -49,7 +52,7 @@ export default function LoginScreen({ errorMsg, errorSeq }) {
         </div>
         <h1>MyFLS Document Browser</h1>
         {error && <p className="login-error">{error}</p>}
-        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth_frame" onSubmit={handleSubmit}>
+        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth" onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="login" />
           <label>
             Email
@@ -67,7 +70,6 @@ export default function LoginScreen({ errorMsg, errorSeq }) {
             {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <iframe name="myfls_auth_frame" title="Sign-in" hidden />
         <p className="login-hint">Ask your administrator if you don't have an account yet.</p>
       </div>
     </div>

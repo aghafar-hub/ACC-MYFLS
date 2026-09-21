@@ -626,27 +626,46 @@ function redirectHtml_(url, message, linkLabel) {
   return HtmlService.createHtmlOutput(html);
 }
 
-// Login, change-password and their errors happen inside a hidden
-// <iframe> embedded directly in the React app's own page (see
-// LoginScreen.jsx / ChangePasswordScreen.jsx) - not a popup window, so
-// there's no separate window for the visitor to notice at all, and
-// nothing for a popup blocker to ever interfere with. This response is
-// still wrapped in Google's own sandboxed iframe on top of that (as
-// redirectHtml_ above explains), so navigation of any kind is out - but
-// postMessage is a message, not a navigation, and is never subject to
-// that sandbox regardless of how many iframes it has to cross.
-// window.top always resolves to the outermost real browser window no
-// matter how deep this is nested (our hidden iframe, inside Google's own
-// wrapper, inside Google's inner iframe), so a single postMessage reaches
-// the React app directly. App.jsx's message listener applies the payload
-// (a URL hash fragment, same shape as the old redirect-based flow) to its
-// own session state - no page navigation happens anywhere.
+// Login, change-password and their errors happen inside a small named
+// popup window (see LoginScreen.jsx / ChangePasswordScreen.jsx), not a
+// hidden <iframe> - a hidden iframe was tried first and seemed cleaner
+// (no window for the visitor to notice at all), but Google's Apps Script
+// responses always send `X-Frame-Options: SAMEORIGIN` and
+// `Content-Security-Policy: frame-ancestors 'self'`, so the browser
+// silently refuses to render Apps Script content inside an iframe on any
+// other origin at all - the iframe just stays blank forever. That
+// restriction doesn't apply to a popup: a popup is its own top-level
+// browsing context, not "framed" by anything, so this loads normally.
+//
+// This response is still wrapped in Google's own sandboxed iframe *within
+// that popup* (as redirectHtml_ above explains), so navigating anywhere
+// directly is still out - but postMessage is a message, not a
+// navigation, and was built specifically to cross exactly this kind of
+// boundary. window.top resolves to the popup's own top-level window
+// (the popup itself, not the original tab) no matter how deep this is
+// nested inside Google's wrapper, and window.top.opener from there reaches
+// back to the *original* tab that opened the popup - postMessage-ing that
+// window directly, then closing the popup, gets the result to the React
+// app with no navigation anywhere. App.jsx's message listener applies the
+// payload (a URL hash fragment, same shape as the old redirect-based
+// flow) to its own session state.
 function postMessageHtml_(hash) {
   const targetOrigin = new URL(APP_URL).origin;
   const html =
     '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
     '<script>' +
-    'try { window.top.postMessage({ source: "myfls-auth", hash: ' + JSON.stringify(hash) + ' }, ' + JSON.stringify(targetOrigin) + '); } catch (e) {}' +
+    '(function () {' +
+    '  var payload = { source: "myfls-auth", hash: ' + JSON.stringify(hash) + ' };' +
+    '  var target = ' + JSON.stringify(targetOrigin) + ';' +
+    '  try {' +
+    '    if (window.top.opener && !window.top.opener.closed) {' +
+    '      window.top.opener.postMessage(payload, target);' +
+    '      window.top.close();' +
+    '      return;' +
+    '    }' +
+    '  } catch (e) {}' +
+    '  try { window.top.postMessage(payload, target); } catch (e2) {}' +
+    '})();' +
     '</script>' +
     '</body></html>';
   return HtmlService.createHtmlOutput(html);

@@ -96,10 +96,11 @@ export default function App() {
   }, [activeSourceId, selection]);
 
   // Login and change-password results arrive here via postMessage from
-  // the hidden iframe those forms submit into (see LoginScreen.jsx /
+  // the small popup those forms submit into (see LoginScreen.jsx /
   // ChangePasswordScreen.jsx and postMessageHtml_ in Code.gs) rather than
-  // by the page reloading with a new URL hash, so this tab never
-  // navigates anywhere during sign-in.
+  // by this tab reloading with a new URL hash - the popup posts the
+  // result back and closes itself, so this tab never navigates anywhere
+  // during sign-in.
   useEffect(() => {
     function onMessage(event) {
       if (APPS_SCRIPT_ORIGIN && event.origin !== APPS_SCRIPT_ORIGIN) return;
