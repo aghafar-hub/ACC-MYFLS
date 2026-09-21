@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlainFolderTree, fetchRichDocs, fetchRichTree, fetchSourcesList, openDocument } from "./api";
-import { clearSession, getSession, isAppsScriptConfigured, setSession } from "./config";
+import { APP_CONFIG, clearSession, getSession, isAppsScriptConfigured, setSession } from "./config";
 import { ancestorChain, buildCatalog, buildDocsByNode, collectDescendantDocs, collectDescendantDocsMulti, indexPlainTree } from "./domain";
 
 import LoginScreen from "./components/LoginScreen";
@@ -13,15 +13,18 @@ import Toast from "./components/Toast";
 
 const PAGE_SIZE = 100;
 
-// The Apps Script login/change-password handlers redirect back here with
-// the session token in the URL *fragment* (never sent to any server,
-// unlike a query string) - pull it out once, store it, then scrub the URL.
-function consumeLoginHash() {
-  if (!window.location.hash) return null;
-  const params = new URLSearchParams(window.location.hash.slice(1));
+// The Apps Script login/change-password handlers report back a hash
+// fragment shaped like a URL's - "token=...&email=..." or "error=..." -
+// but it's never actually put in the address bar (never sent to any
+// server, unlike a query string): it arrives via postMessage from a
+// hidden <iframe> the login/change-password forms submit into (see
+// LoginScreen.jsx / ChangePasswordScreen.jsx and the message listener
+// below), so this just needs to parse the string, not touch the URL.
+function parseAuthHash(hash) {
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
   const token = params.get("token");
   const error = params.get("error");
-  window.history.replaceState(null, "", window.location.pathname + window.location.search);
   if (token) {
     const session = {
       token,
@@ -35,6 +38,24 @@ function consumeLoginHash() {
   if (error) return { error };
   return null;
 }
+
+// Back-compat for a directly-loaded URL that still has an old-style hash
+// (a stale bookmark, or the tab reloading mid-flow) - reads it once at
+// startup, applies it the same way, then scrubs the URL.
+function consumeLoginHash() {
+  if (!window.location.hash) return null;
+  const result = parseAuthHash(window.location.hash.slice(1));
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  return result;
+}
+
+const APPS_SCRIPT_ORIGIN = (() => {
+  try {
+    return new URL(APP_CONFIG.APPS_SCRIPT_URL).origin;
+  } catch {
+    return null;
+  }
+})();
 
 export default function App() {
   const [authState, setAuthState] = useState(() => {
@@ -73,6 +94,32 @@ export default function App() {
   useEffect(() => {
     setSidebarOpen(false);
   }, [activeSourceId, selection]);
+
+  // Login and change-password results arrive here via postMessage from
+  // the hidden iframe those forms submit into (see LoginScreen.jsx /
+  // ChangePasswordScreen.jsx and postMessageHtml_ in Code.gs) rather than
+  // by the page reloading with a new URL hash, so this tab never
+  // navigates anywhere during sign-in.
+  useEffect(() => {
+    function onMessage(event) {
+      if (APPS_SCRIPT_ORIGIN && event.origin !== APPS_SCRIPT_ORIGIN) return;
+      if (!event.data || event.data.source !== "myfls-auth") return;
+      const result = parseAuthHash(event.data.hash);
+      if (result?.session) {
+        setAuthState(
+          result.session.mustChange ? { view: "changePassword", session: result.session } : { view: "app", session: result.session }
+        );
+      } else if (result?.error) {
+        // errorSeq always changes even if the error text repeats (e.g.
+        // the same wrong password twice in a row) - LoginScreen /
+        // ChangePasswordScreen key off it to reliably clear their
+        // "submitting" state each time, not just when the text differs.
+        setAuthState((prev) => ({ ...prev, error: result.error, errorSeq: (prev.errorSeq || 0) + 1 }));
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   const showToast = useCallback((msg) => setToast(msg), []);
 
@@ -300,10 +347,10 @@ export default function App() {
   };
 
   if (authState.view === "login") {
-    return <LoginScreen errorMsg={authState.error} />;
+    return <LoginScreen errorMsg={authState.error} errorSeq={authState.errorSeq} />;
   }
   if (authState.view === "changePassword") {
-    return <ChangePasswordScreen session={authState.session} />;
+    return <ChangePasswordScreen session={authState.session} errorMsg={authState.error} errorSeq={authState.errorSeq} />;
   }
 
   return (

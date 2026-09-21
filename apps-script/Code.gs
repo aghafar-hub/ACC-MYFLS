@@ -448,12 +448,12 @@ function handleLogin_(e) {
   const user = findUser_(email);
 
   if (!user || !verifyPassword_(password, user.salt, user.passwordHash)) {
-    return redirectHtml_(APP_URL + '#error=' + encodeURIComponent('Incorrect email or password.'));
+    return postMessageHtml_('error=' + encodeURIComponent('Incorrect email or password.'));
   }
 
   const remember = e.parameter.remember === '1';
   const token = createSession_(email, remember ? REMEMBER_TTL_HOURS : SESSION_TTL_HOURS);
-  return redirectHtml_(loginRedirectUrl_(token, email, user.role, user.mustChangePassword));
+  return postMessageHtml_(loginHash_(token, email, user.role, user.mustChangePassword));
 }
 
 function handleLogout_(e) {
@@ -464,19 +464,21 @@ function handleLogout_(e) {
 function handleChangePassword_(e) {
   const email = getSessionEmail_(e.parameter.token);
   if (!email) {
-    return htmlMsg_('Your session has expired. Go back to the app and sign in again.');
+    return postMessageHtml_('error=' + encodeURIComponent('Your session has expired. Please sign in again.'));
   }
   const newPassword = e.parameter.newPassword || '';
   if (newPassword.length < 6) {
-    return htmlMsg_('Password must be at least 6 characters. Go back and try again.');
+    return postMessageHtml_('error=' + encodeURIComponent('Password must be at least 6 characters.'));
   }
   const user = findUser_(email);
   setUserPassword_(email, newPassword);
-  return redirectHtml_(loginRedirectUrl_(e.parameter.token, email, user.role, false));
+  return postMessageHtml_(loginHash_(e.parameter.token, email, user.role, false));
 }
 
-function loginRedirectUrl_(token, email, role, mustChangePassword) {
-  return APP_URL + '#token=' + encodeURIComponent(token) +
+// The hash-fragment payload (never a full URL - see postMessageHtml_ for
+// why) that tells the React app which session to use.
+function loginHash_(token, email, role, mustChangePassword) {
+  return 'token=' + encodeURIComponent(token) +
     '&email=' + encodeURIComponent(email) +
     '&role=' + encodeURIComponent(role) +
     '&mustChange=' + (mustChangePassword ? '1' : '0');
@@ -586,23 +588,17 @@ function renderAdminPage_(email, token, notice) {
 // GitHub Pages app) is silently blocked. A same-frame location.href
 // fallback doesn't help either: it just loads the destination *inside*
 // that same iframe, trapping the user under the script.google.com address
-// forever with our real app rendered one level too deep. The reliable fix
-// is the classic OAuth-popup pattern: the login/change-password forms in
-// the React app open their POST in a named popup window (see
-// LoginScreen.jsx / ChangePasswordScreen.jsx), which gives this response
-// a `window.opener` handle back to the *real* tab. Navigating window.opener
-// (always permitted cross-origin — you can always redirect a window you
-// have a handle to) and then closing this popup gets the user back to
-// github.io reliably, with no iframe involved at all.
+// forever with our real app rendered one level too deep.
 //
-// Opening a document works differently: it's launched as its own
-// standalone tab with rel="noopener" (see api.js), so there's no opener
-// to hand off to. There, a same-frame location.replace() is the right
-// fallback instead of a trap: it's a disposable tab that exists only to
-// show one file, so ending up with the Drive viewer rendered inside
-// Google's iframe (address bar unchanged) is a fine trade for not making
-// every document open require a manual click. The visible button remains
-// as a last-resort manual option either way.
+// Used for document-open only (see postMessageHtml_ below for
+// login/logout/change-password, which don't need any of this). Opening a
+// document is launched as its own standalone tab with rel="noopener" (see
+// api.js) specifically so it's disposable - there's nothing to hand
+// control back to, and no reason to: it exists only to show one file, so
+// a same-frame location.replace() ending up with the Drive viewer
+// rendered inside Google's iframe (address bar unchanged) is a fine
+// trade for not making every document open require a manual click. The
+// visible button remains as a last-resort manual option either way.
 function redirectHtml_(url, message, linkLabel) {
   const html =
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
@@ -625,6 +621,32 @@ function redirectHtml_(url, message, linkLabel) {
     '  try { (window.top || window).location.replace(url); } catch (e2) {}' +
     '  try { window.location.replace(url); } catch (e3) {}' +
     '})();' +
+    '</script>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html);
+}
+
+// Login, change-password and their errors happen inside a hidden
+// <iframe> embedded directly in the React app's own page (see
+// LoginScreen.jsx / ChangePasswordScreen.jsx) - not a popup window, so
+// there's no separate window for the visitor to notice at all, and
+// nothing for a popup blocker to ever interfere with. This response is
+// still wrapped in Google's own sandboxed iframe on top of that (as
+// redirectHtml_ above explains), so navigation of any kind is out - but
+// postMessage is a message, not a navigation, and is never subject to
+// that sandbox regardless of how many iframes it has to cross.
+// window.top always resolves to the outermost real browser window no
+// matter how deep this is nested (our hidden iframe, inside Google's own
+// wrapper, inside Google's inner iframe), so a single postMessage reaches
+// the React app directly. App.jsx's message listener applies the payload
+// (a URL hash fragment, same shape as the old redirect-based flow) to its
+// own session state - no page navigation happens anywhere.
+function postMessageHtml_(hash) {
+  const targetOrigin = new URL(APP_URL).origin;
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>' +
+    'try { window.top.postMessage({ source: "myfls-auth", hash: ' + JSON.stringify(hash) + ' }, ' + JSON.stringify(targetOrigin) + '); } catch (e) {}' +
     '</script>' +
     '</body></html>';
   return HtmlService.createHtmlOutput(html);

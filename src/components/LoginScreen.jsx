@@ -1,27 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { APP_CONFIG, isAppsScriptConfigured } from "../config";
 
-export default function LoginScreen({ errorMsg }) {
-  const [error, setError] = useState(errorMsg || "");
+export default function LoginScreen({ errorMsg, errorSeq }) {
+  const [localError, setLocalError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // errorSeq changes every time a fresh error arrives from the server
+  // (even if the text is identical to the last one), so this reliably
+  // clears the "Signing in…" state instead of getting stuck if someone
+  // retries with the same wrong password twice in a row.
+  useEffect(() => {
+    if (errorSeq) setSubmitting(false);
+  }, [errorSeq]);
 
   const handleSubmit = (e) => {
     if (!isAppsScriptConfigured()) {
       e.preventDefault();
-      setError("Sign-in is not configured yet (see README).");
+      setLocalError("Sign-in is not configured yet (see README).");
       return;
     }
-    // otherwise: the POST opens in a named popup (target="myfls_auth") so
-    // this tab never leaves github.io — Apps Script's response then writes
-    // the token (or an error) onto this tab's URL hash via window.opener
-    // and closes itself. Apps Script's own sandboxed iframe blocks a plain
-    // same-tab redirect back to a different origin, so this popup+opener
-    // handoff is the reliable way out. Pre-opening it here at a small,
-    // fixed size (rather than letting the form's target="_blank"-style
-    // navigation open a full new tab) makes it read as a brief sign-in
-    // prompt instead of "the app opened somewhere else" — it closes
-    // itself again within about a second either way.
-    window.open("", "myfls_auth", "width=420,height=360,menubar=no,toolbar=no,location=no,status=no");
+    setLocalError("");
+    setSubmitting(true);
+    // The form posts into the hidden <iframe> below instead of navigating
+    // this tab or opening a popup. Apps Script's own sandboxed iframe
+    // blocks a plain redirect back to a different origin no matter how
+    // it's triggered, but postMessage was built specifically to cross
+    // that kind of boundary and isn't subject to it - so Apps Script's
+    // response posts the result back up (see App.jsx's message listener)
+    // instead of trying to navigate anywhere. Nothing ever leaves this
+    // page, so there's no popup window or extra tab to notice at all.
   };
+
+  const error = localError || errorMsg;
 
   return (
     <div className="login-screen">
@@ -39,7 +49,7 @@ export default function LoginScreen({ errorMsg }) {
         </div>
         <h1>MyFLS Document Browser</h1>
         {error && <p className="login-error">{error}</p>}
-        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth" onSubmit={handleSubmit}>
+        <form method="post" action={APP_CONFIG.APPS_SCRIPT_URL} target="myfls_auth_frame" onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="login" />
           <label>
             Email
@@ -53,10 +63,11 @@ export default function LoginScreen({ errorMsg }) {
             <input type="checkbox" name="remember" value="1" defaultChecked />
             Keep me signed in on this device
           </label>
-          <button type="submit" className="btn primary">
-            Sign in
+          <button type="submit" className="btn primary" disabled={submitting}>
+            {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <iframe name="myfls_auth_frame" title="Sign-in" hidden />
         <p className="login-hint">Ask your administrator if you don't have an account yet.</p>
       </div>
     </div>
