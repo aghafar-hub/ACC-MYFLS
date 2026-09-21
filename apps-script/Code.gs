@@ -94,6 +94,46 @@ function openSettingsSpreadsheet_() {
   });
 }
 
+// Diagnostic only - select this in the function dropdown above the editor
+// and click Run, then View > Executions (or View > Logs) to see exactly
+// which step fails and why, straight from Apps Script itself rather than
+// guessing from what the web app's error page shows. Safe to run anytime;
+// it writes one throwaway row to Sessions and leaves everything else
+// untouched.
+function testSettingsAccess() {
+  Logger.log('Script property SETTINGS_SHEET_ID = ' + PropertiesService.getScriptProperties().getProperty('SETTINGS_SHEET_ID'));
+  var id;
+  try {
+    id = getSettingsSheetId_();
+    Logger.log('OK: getSettingsSheetId_() -> ' + id);
+  } catch (e) {
+    Logger.log('FAILED at getSettingsSheetId_(): ' + e);
+    return;
+  }
+  try {
+    var ss = openSettingsSpreadsheet_();
+    Logger.log('OK: opened spreadsheet "' + ss.getName() + '"');
+  } catch (e) {
+    Logger.log('FAILED at openSettingsSpreadsheet_(): ' + e);
+    return;
+  }
+  try {
+    var users = getUserList_();
+    Logger.log('OK: read Users sheet, ' + users.length + ' row(s)');
+  } catch (e) {
+    Logger.log('FAILED at getUserList_() (reading Users sheet): ' + e);
+    return;
+  }
+  try {
+    var token = createSession_('diagnostic-test@example.com');
+    Logger.log('OK: wrote a test row to Sessions, token starts with ' + token.slice(0, 8));
+  } catch (e) {
+    Logger.log('FAILED at createSession_() (writing to Sessions sheet): ' + e);
+    return;
+  }
+  Logger.log('ALL CHECKS PASSED - the settings sheet is fully readable and writable.');
+}
+
 // ---------------- one-time setup / migration ----------------
 // Run ONE of these once from the Apps Script editor (select it in the
 // function dropdown, click Run) - both set the SETTINGS_SHEET_ID script
