@@ -67,6 +67,7 @@ const APP_URL = 'https://aghafar-hub.github.io/ACC-MYFLS/';
 const BOOTSTRAP_ADMIN_EMAILS = ['aghafar@arabiancementcompany.com'];
 
 const SESSION_TTL_HOURS = 12;
+const REMEMBER_TTL_HOURS = 24 * 30; // "Keep me signed in" - 30 days
 const HASH_ITERATIONS = 10000;
 
 // Sheets/Drive calls occasionally throw a transient "You do not have
@@ -351,11 +352,11 @@ function getSessionsSheet_() {
   return openSettingsSpreadsheet_().getSheetByName('Sessions');
 }
 
-function createSession_(email) {
+function createSession_(email, ttlHours) {
   const sheet = getSessionsSheet_();
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
   const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_TTL_HOURS * 3600 * 1000);
+  const expires = new Date(now.getTime() + (ttlHours || SESSION_TTL_HOURS) * 3600 * 1000);
   withRetry_(function () {
     sheet.appendRow([token, email, now.toISOString(), expires.toISOString()]);
   });
@@ -450,7 +451,8 @@ function handleLogin_(e) {
     return redirectHtml_(APP_URL + '#error=' + encodeURIComponent('Incorrect email or password.'));
   }
 
-  const token = createSession_(email);
+  const remember = e.parameter.remember === '1';
+  const token = createSession_(email, remember ? REMEMBER_TTL_HOURS : SESSION_TTL_HOURS);
   return redirectHtml_(loginRedirectUrl_(token, email, user.role, user.mustChangePassword));
 }
 

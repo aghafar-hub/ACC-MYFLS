@@ -8,13 +8,19 @@ export default function LoginScreen({ errorMsg }) {
     if (!isAppsScriptConfigured()) {
       e.preventDefault();
       setError("Sign-in is not configured yet (see README).");
+      return;
     }
     // otherwise: the POST opens in a named popup (target="myfls_auth") so
     // this tab never leaves github.io — Apps Script's response then writes
     // the token (or an error) onto this tab's URL hash via window.opener
     // and closes itself. Apps Script's own sandboxed iframe blocks a plain
     // same-tab redirect back to a different origin, so this popup+opener
-    // handoff is the reliable way out.
+    // handoff is the reliable way out. Pre-opening it here at a small,
+    // fixed size (rather than letting the form's target="_blank"-style
+    // navigation open a full new tab) makes it read as a brief sign-in
+    // prompt instead of "the app opened somewhere else" — it closes
+    // itself again within about a second either way.
+    window.open("", "myfls_auth", "width=420,height=360,menubar=no,toolbar=no,location=no,status=no");
   };
 
   return (
@@ -42,6 +48,10 @@ export default function LoginScreen({ errorMsg }) {
           <label>
             Password
             <input type="password" name="password" required autoComplete="current-password" />
+          </label>
+          <label className="login-remember">
+            <input type="checkbox" name="remember" value="1" defaultChecked />
+            Keep me signed in on this device
           </label>
           <button type="submit" className="btn primary">
             Sign in

@@ -1,6 +1,14 @@
-export default function TopBar({ session, searchTerm, onSearchChange, authNotice, onOpenSettings }) {
+export default function TopBar({ session, searchTerm, onSearchChange, authNotice, onOpenSettings, onToggleSidebar }) {
   return (
     <header className="topbar">
+      <button
+        className="btn icon-btn menu-btn"
+        title="Plants & projects"
+        aria-label="Toggle plants and projects menu"
+        onClick={onToggleSidebar}
+      >
+        &#9776;
+      </button>
       <div className="brand">
         <div className="brand-logos">
           <img

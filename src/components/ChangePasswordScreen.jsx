@@ -19,6 +19,7 @@ export default function ChangePasswordScreen({ session }) {
     }
     // otherwise: the POST opens in a named popup (target="myfls_auth"),
     // same handoff as the login form — see LoginScreen.jsx for why.
+    window.open("", "myfls_auth", "width=420,height=360,menubar=no,toolbar=no,location=no,status=no");
   };
 
   const handleSignOut = (e) => {

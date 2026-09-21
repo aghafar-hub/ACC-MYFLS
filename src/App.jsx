@@ -64,6 +64,15 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // No-op on desktop (the CSS that reads it only applies at narrow
+  // widths) - on mobile, where the tree panel is an off-canvas drawer,
+  // this closes it as soon as the visitor picks something so they land
+  // straight on the document table instead of the drawer staying open.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [activeSourceId, selection]);
 
   const showToast = useCallback((msg) => setToast(msg), []);
 
@@ -308,6 +317,7 @@ export default function App() {
         }}
         authNotice={isAppsScriptConfigured() ? "" : "Document opening not configured yet (see README)."}
         onOpenSettings={() => setSettingsOpen(true)}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
 
       <main className="layout">
@@ -324,6 +334,8 @@ export default function App() {
             onSelectRichNode={selectRichNode}
             onSelectPlainFolder={(sourceId, path) => selectPlainFolder(sourceId, path, false)}
             onChangeView={changeView}
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
           />
         )}
 

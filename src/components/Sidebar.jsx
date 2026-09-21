@@ -262,6 +262,8 @@ export default function Sidebar({
   onSelectRichNode,
   onSelectPlainFolder,
   onChangeView,
+  isOpen,
+  onClose,
 }) {
   const activeKey = !activeSourceId
     ? null
@@ -285,33 +287,36 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="tree-panel">
-      <div className="panel-title">
-        <span>Plants &amp; Projects</span>
-      </div>
-      <ul className="tree">
-        {catalog.topSources.map((s) => (
-          <SourceRow
-            key={s.id}
-            source={s}
-            sourceData={sourceData[s.id]}
-            nestedSources={catalog.nestedByParent.get(s.id) || []}
-            expandedKeys={expandedKeys}
-            onToggleExpand={onToggleExpand}
-            {...commonProps}
-          />
-        ))}
-        {[...catalog.groups.entries()].map(([label, groupSources]) => (
-          <GroupRow
-            key={label}
-            label={label}
-            sources={groupSources}
-            expandedKeys={expandedKeys}
-            onToggleExpand={onToggleExpand}
-            {...commonProps}
-          />
-        ))}
-      </ul>
-    </aside>
+    <>
+      {isOpen && <div className="tree-backdrop" onClick={onClose} />}
+      <aside className={`tree-panel${isOpen ? " mobile-open" : ""}`}>
+        <div className="panel-title">
+          <span>Plants &amp; Projects</span>
+        </div>
+        <ul className="tree">
+          {catalog.topSources.map((s) => (
+            <SourceRow
+              key={s.id}
+              source={s}
+              sourceData={sourceData[s.id]}
+              nestedSources={catalog.nestedByParent.get(s.id) || []}
+              expandedKeys={expandedKeys}
+              onToggleExpand={onToggleExpand}
+              {...commonProps}
+            />
+          ))}
+          {[...catalog.groups.entries()].map(([label, groupSources]) => (
+            <GroupRow
+              key={label}
+              label={label}
+              sources={groupSources}
+              expandedKeys={expandedKeys}
+              onToggleExpand={onToggleExpand}
+              {...commonProps}
+            />
+          ))}
+        </ul>
+      </aside>
+    </>
   );
 }
