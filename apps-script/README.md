@@ -1,8 +1,17 @@
-# Apps Script backend
+# Apps Script backend (not used by the live app)
 
-`Code.gs` is the backend: it serves the admin page and resolves/opens a
-document from Drive when there's no direct link baked in yet (see the
-main [README](../README.md#4-make-documents-open-instantly-direct-drive-links)).
+**The live app no longer uses any of this.** It pivoted to a fully
+local, no-backend setup — opening a document is a plain `file://` link
+built from a Drive-for-Desktop-synced folder on the visitor's own PC
+(see the main [README](../README.md)'s "What's in the app" section) -
+after Apps Script's platform-level restrictions (no CORS, no iframing,
+Drive access tied to whichever identity mode the deployment runs under)
+turned out to be too unreliable for login and document-opening both.
+This whole file is kept for historical reference only, in case any of it
+is useful again later.
+
+`Code.gs` was the backend: it served the admin page and resolved/opened
+a document from Drive when there was no direct link baked in yet.
 
 This file is tracked here as the source of truth, but Google Apps
 Script has no git integration — you paste its contents into the online

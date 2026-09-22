@@ -2,9 +2,15 @@
 
 A React + Vite web app that recreates the navigation tree and search
 from the old myFLS "CD viewer" (`ACC line 1/html/mfcdappstart.html`),
-extended to cover several plant/project folders under `Desktop/MyFLS`,
-and opening each document from Google Drive instead of a local disk
-folder.
+extended to cover several plant/project folders under `Desktop/MyFLS`.
+
+**No backend, no login, no Google account check.** The tree/search data
+is static JSON served by GitHub Pages; opening a document reads it
+straight off disk, via the browser's File System Access API, from
+wherever Google Drive for Desktop has synced the shared folder on the
+visitor's own PC (granted once per machine from Settings — see "Local
+files" below; Chrome/Edge only). There's nothing server-side to
+misconfigure or redeploy, and nothing that can be "down."
 
 Deployed automatically to GitHub Pages by GitHub Actions on every push
 to `main` — no manual "build and upload" step.
@@ -12,33 +18,36 @@ to `main` — no manual "build and upload" step.
 It's also a **PWA (Progressive Web App)**: once published, visitors can
 install it as an app — "Add to Home Screen" on a phone, or the install
 icon in Chrome/Edge's address bar on desktop — which gives it its own
-app icon, opens without browser chrome, and keeps the tree/search
-working offline for any source already opened at least once (opening a
-document still needs an internet connection, since that always goes
-through Drive).
+app icon and opens without browser chrome. The tree/search works fully
+offline once loaded; opening a document works offline too as long as the
+Drive-for-Desktop-synced folder is available locally (the whole point of
+this setup).
 
 ## Project layout
 
 ```
 index.html, vite.config.js, package.json   - Vite app entry + build config
 src/                                        - the real source code
-  main.jsx, App.jsx                         - app shell + all state (auth, sources, selection)
-  config.js                                 - Apps Script URL, session/theme localStorage helpers
-  api.js                                    - fetches source data, resolves how to open a document
+  main.jsx, App.jsx                         - app shell + all state (sources, selection, local-root name)
+  config.js                                 - theme localStorage helpers
+  localFiles.js                             - File System Access API wrapper (folder picker, permission,
+                                               resolving a path to a File) - the IndexedDB-backed folder handle
+  api.js                                    - fetches source data, reads a document off disk to open it
   domain.js                                 - pure data-shaping (catalog, tree traversal, formatting)
-  ThemeContext.jsx                          - the 6-theme (3 hues x light/dark) picker
-  components/                               - LoginScreen, Sidebar, DocumentTable, SettingsPanel, etc.
+  ThemeContext.jsx                          - the 10-theme picker
+  components/                               - Sidebar, DocumentTable, SettingsPanel, TopBar, etc.
   index.css                                 - the whole app's styling (CSS custom-property theme tokens)
 public/                                     - static files served as-is (not processed by Vite)
   data/<source-id>/                         - tree.json + documents.json (rich) or folderTree.json (plain)
   data/sources.json                         - the manifest of every source
   acc-logo.png, fls-logo.png, manifest.json, sw.js, icon-*.png
-apps-script/                                - the Google Apps Script backend (admin page,
-                                               Drive path resolution) - see apps-script/README.md
+apps-script/                                - a Google Apps Script project kept for its DriveManifest export
+                                               tool only (see "Regenerating the data") - not used by the live
+                                               app at all; see apps-script/README.md
 scripts/                                    - Node tools that generate public/data/*.json (not part of the
                                                deployed app itself) - see "Regenerating the data" below
-legacy-exact-copy/                          - the original plain HTML/JS/CSS build, kept for reference;
-                                               not what's served live
+legacy-exact-copy/                          - an earlier plain HTML/JS/CSS build (still Apps-Script-backed),
+                                               kept for reference; not what's served live
 .github/workflows/                          - ci.yml (lint + format + build on every push/PR) and
                                                deploy.yml (build + publish to GitHub Pages on push to main)
 ```
@@ -76,10 +85,13 @@ ones) are intentionally left out for now — see "Regenerating the data."
 
 There's no login screen — anyone with the link can browse the tree and
 search. Everyone can open **Settings** (gear icon, top right) to pick one
-of 10 color themes, and there's a "Manage admins" link there too. See
-[`apps-script/README.md`](apps-script/README.md) for how access control
-and document-opening actually work (documents stay protected by Drive's
-own domain-only sharing), and the one-time setup required.
+of 10 color themes and, under **Local files**, click **Choose folder**
+to grant the app access to wherever Google Drive for Desktop has synced
+the shared plant-documents folder on their own PC — a native OS folder
+picker, not typing a path. That's the only setup step (once per browser
+per machine); after that, clicking a document reads it straight off disk
+via the File System Access API, no network round-trip involved. Needs
+Chrome or Edge.
 
 ## Local development
 
@@ -102,11 +114,7 @@ which builds the app and publishes `dist/` — no manual branch or
 
 ## Regenerating the data
 
-Nothing under `public/data/` is hand-written. Note that `extract.js` and
-`extract-plain.js` each rewrite their source's JSON file from scratch,
-which wipes any `driveUrl` fields baked in by `merge-drive-links.js` —
-re-run that merge afterward (see `apps-script/README.md` step 4) to
-restore instant direct links.
+Nothing under `public/data/` is hand-written.
 
 **Rich sources** (myFLS CD exports) — if FLSmidth/the plant issues an
 updated export for a plant, re-run:
@@ -161,21 +169,21 @@ up.
   showing only current revisions). Nothing is hidden; if you'd rather
   only show the latest version per document number, that's a small
   follow-up to the extractor.
-- **TIFF previews**: Google Drive's built-in preview does not always
-  render multi-page TIFF scans well. Drive still lets you download the
-  original file from the preview page.
+- **TIFF viewing** depends entirely on the browser/OS having a handler
+  for multi-page TIFFs when a document opens as a downloaded blob —
+  Windows' Photos app and most browsers handle single-page TIFFs fine,
+  but multi-page support varies. This is unrelated to the app itself;
+  it's whatever opens `.tif` files on that PC.
 - **Plain-source search** only matches file names, not folder names or
   file contents.
-- **Opening a deeply nested plain-source file** (when it's not yet in
-  the direct-link manifest) walks that many folders one at a time
-  inside the Apps Script, so it can take a second or two longer than a
-  rich-source document, which is a flat one-hop lookup.
+- **Needs Chrome or Edge** (the File System Access API opening documents
+  relies on isn't implemented in Firefox or Safari as of when this was
+  written).
+- **Only works on a PC with Google Drive for Desktop installed and
+  synced** to the same folder structure as `Desktop/MyFLS` (granted once
+  in Settings — see "What's in the app"). There's no way to host this for
+  people without that set up locally; it's a deliberate trade for having
+  no backend at all.
 - **`Projects` and a few smaller folders are intentionally not in the
   app yet** — adding any of them back is the same process described
   above.
-- **`apps-script/Code.gs` has no real deploy pipeline**: Google Apps
-  Script requires pasting the file into their web editor and clicking
-  through "Manage deployments" by hand — there's no way to `git push`
-  a backend change live the way the frontend deploys automatically.
-  Always redeploy after editing it; this has been the source of more
-  than one "I fixed it but it's still broken" moment.

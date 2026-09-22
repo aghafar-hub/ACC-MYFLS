@@ -1,15 +1,9 @@
-// Not a secret - it's the same URL people already need to click to open a
-// document. Real access control lives in the Apps Script settings sheet,
-// not in this file. See apps-script/README.md for how to deploy your own.
-export const APP_CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw3-gfpbwFVMU5xIXlAxNSiaXzHMy2g02iHei-h2QndiNW3WHMiYwSfruTTNhx_jRyn/exec",
-};
-
-export function isAppsScriptConfigured() {
-  return Boolean(APP_CONFIG.APPS_SCRIPT_URL) && !APP_CONFIG.APPS_SCRIPT_URL.startsWith("YOUR_");
-}
-
 export const THEME_KEY = "myfls_theme";
+
+// See localFiles.js for the "local files folder" setting - it's a
+// FileSystemDirectoryHandle (from the File System Access API), which
+// isn't JSON-serializable, so it lives in IndexedDB rather than
+// alongside the plain string settings here.
 
 // Same 10 themes (names + colors) as acc-oil-analysis-app / ACC-Vibration-
 // Analysis-App, for a consistent look across all three apps. "id" here is

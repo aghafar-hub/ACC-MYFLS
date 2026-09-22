@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlainFolderTree, fetchRichDocs, fetchRichTree, fetchSourcesList, openDocument } from "./api";
-import { isAppsScriptConfigured } from "./config";
+import { getStoredRootHandle } from "./localFiles";
 import { ancestorChain, buildCatalog, buildDocsByNode, collectDescendantDocs, collectDescendantDocsMulti, indexPlainTree } from "./domain";
 
 import TopBar from "./components/TopBar";
@@ -11,12 +11,24 @@ import Toast from "./components/Toast";
 
 const PAGE_SIZE = 100;
 
-// No login screen - anyone with the link can browse the tree/search here.
-// The documents themselves stay protected: opening one still requires a
-// arabiancementcompany.com Google account, since the underlying Drive
-// files/folder are shared domain-only (Google's own sign-in handles
-// that, outside this app entirely). See apps-script/README.md.
+// No login screen, no backend at all - anyone with the link can browse
+// the tree/search here, and opening a document reads it straight off
+// disk via the File System Access API, from wherever Google Drive for
+// Desktop has synced the shared folder on this PC (see the "Local
+// files" section in Settings).
 export default function App() {
+  // Just a display name ("is a folder connected, and what's it called") -
+  // the actual FileSystemDirectoryHandle lives in IndexedDB (see
+  // localFiles.js) and openDocument reads it fresh each time, since
+  // handles aren't the kind of thing you hold in ordinary state.
+  const [localRootName, setLocalRootName] = useState(null);
+  useEffect(() => {
+    getStoredRootHandle().then((handle) => setLocalRootName(handle?.name || null));
+  }, []);
+  const handleLocalRootChanged = useCallback((handle) => {
+    setLocalRootName(handle?.name || null);
+  }, []);
+
   const [sources, setSources] = useState(null);
   const [sourceData, setSourceData] = useState({});
   const sourceDataRef = useRef(sourceData);
@@ -203,7 +215,6 @@ export default function App() {
         path: `${selection.path}/${c.name}`,
         size: c.type === "file" ? c.size || 0 : null,
         isFolder: c.type === "folder",
-        driveUrl: c.driveUrl || null,
       }));
     }
     return [];
@@ -247,16 +258,16 @@ export default function App() {
     setSortKey(key);
   };
 
-  const handleOpenRichDoc = (doc) => {
+  const handleOpenRichDoc = async (doc) => {
     const path = `${activeData.source.driveFolderName}/documents/${doc.fileName}`;
-    const result = openDocument(doc.driveUrl, path);
+    const result = await openDocument(path);
     if (!result.ok) showToast(result.message);
   };
 
-  const handleOpenPlainFile = (file) => {
+  const handleOpenPlainFile = async (file) => {
     const prefix = activeData.source.driveFolderName ? `${activeData.source.driveFolderName}/` : "";
     const withoutRoot = file.path.split("/").slice(1).join("/");
-    const result = openDocument(file.driveUrl, prefix + withoutRoot);
+    const result = await openDocument(prefix + withoutRoot);
     if (!result.ok) showToast(result.message);
   };
 
@@ -272,7 +283,7 @@ export default function App() {
           setSearchTerm(v);
           setPage(1);
         }}
-        authNotice={isAppsScriptConfigured() ? "" : "Document opening not configured yet (see README)."}
+        authNotice={localRootName ? "" : "Set your local files folder in Settings to open documents."}
         onOpenSettings={() => setSettingsOpen(true)}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
@@ -318,7 +329,9 @@ export default function App() {
         />
       </main>
 
-      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsPanel localRootName={localRootName} onLocalRootChanged={handleLocalRootChanged} onClose={() => setSettingsOpen(false)} />
+      )}
       <Toast message={toast} onDone={() => setToast("")} />
     </div>
   );

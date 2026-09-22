@@ -1,9 +1,23 @@
-import { adminPanelUrl } from "../api";
+import { useState } from "react";
 import { THEMES } from "../config";
+import { isFileSystemAccessSupported, pickLocalRoot } from "../localFiles";
 import { useTheme } from "../ThemeContext";
 
-export default function SettingsPanel({ onClose }) {
+export default function SettingsPanel({ localRootName, onLocalRootChanged, onClose }) {
   const { themeId, setTheme } = useTheme();
+  const [error, setError] = useState("");
+  const supported = isFileSystemAccessSupported();
+
+  const handleChooseFolder = async () => {
+    setError("");
+    try {
+      const handle = await pickLocalRoot();
+      onLocalRootChanged(handle);
+    } catch (err) {
+      // AbortError just means the visitor closed the picker without choosing anything
+      if (err?.name !== "AbortError") setError("Couldn't access that folder.");
+    }
+  };
 
   return (
     <div className="settings-panel">
@@ -35,17 +49,26 @@ export default function SettingsPanel({ onClose }) {
         </section>
 
         <section className="settings-section">
-          <h3>Admin</h3>
-          <p>Opens a page to manage who has admin access. You'll need to be signed in as an admin to make changes there.</p>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              window.open(adminPanelUrl(), "myfls_admin");
-            }}
-          >
-            Manage admins
-          </button>
+          <h3>Local files</h3>
+          {supported ? (
+            <>
+              <p>
+                Opening a document reads it straight from this PC. Point this at the folder where Google Drive for Desktop has synced the
+                shared plant-documents folder - the browser will ask to confirm access.
+              </p>
+              {localRootName && (
+                <p>
+                  Connected to: <strong>{localRootName}</strong>
+                </p>
+              )}
+              {error && <p className="login-error">{error}</p>}
+              <button type="button" className="btn" onClick={handleChooseFolder}>
+                {localRootName ? "Change folder" : "Choose folder"}
+              </button>
+            </>
+          ) : (
+            <p>Local file access needs Chrome or Edge - this browser doesn't support it.</p>
+          )}
         </section>
       </div>
     </div>
